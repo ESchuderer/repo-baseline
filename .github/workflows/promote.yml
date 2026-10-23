@@ -1,9 +1,9 @@
 name: Promote
 
 # Reusable: keeps one open pull request from the source branch to the release branch, listing the commits the
-# release branch lacks. Merging it (merge commit) is the release decision. GITHUB_TOKEN opens it, so it starts no
-# workflows: the release branch may only require checks that also run on pushes to the source branch, whose
-# results already sit on the pull request's head commit.
+# release branch lacks. Merging it (merge commit) is the release decision. GITHUB_TOKEN opens it, so its
+# pull_request runs wait for approval by someone with write access: the release branch should only require checks
+# that also run on pushes to the source branch, whose results already sit on the pull request's head commit.
 on:
   workflow_call:
     inputs:
