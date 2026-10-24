@@ -1,5 +1,5 @@
 // Merge `linter.rules` and `overrides` into the repository's biome.json (rename it to biome.jsonc for comments).
-// Keep the `$schema` version equal to the biome-version input of the lint-js workflow.
+// Point `$schema` at the installed package: ./node_modules/@biomejs/biome/configuration_schema.json
 {
   "linter": {
     "rules": {

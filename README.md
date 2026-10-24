@@ -7,8 +7,8 @@ Shared GitHub setup for ESchuderer's and OpenReloading's repositories: reusable 
 | Module | File | What it does |
 |---|---|---|
 | promote | `.github/workflows/promote.yml` | Keeps one open pull request from `develop` to `main` that lists the commits `main` lacks. Merging it with a merge commit is the release. |
-| lint-js | `.github/workflows/lint-js.yml`, `templates/lint-js/` | Biome (cognitive complexity, parameters, function length, import cycles), knip, jscpd and a TypeScript strictness gate, with baselines so nothing fails on day one. |
-| lint-python | `.github/workflows/lint-python.yml`, `templates/lint-python/` | ruff (bugbear, simplify, complexity and size limits, pathlib, pylint subset) and basedpyright with a baseline file. |
+| lint-js | `callers/lint-js.yml`, `templates/lint-js/` | Configuration for JavaScript and TypeScript repositories: Biome (lint, cognitive complexity, parameters, function length, import cycles), knip, jscpd and a TypeScript strictness gate, run by npm scripts of the repository with the tools as its devDependencies. No reusable workflow. |
+| lint-python | `callers/lint-python.yml`, `templates/lint-python/` | Configuration for Python repositories: ruff (bugbear, simplify, complexity and size limits, pathlib, pylint subset) and basedpyright with a baseline file, installed from the repository's dev dependencies. No reusable workflow. |
 | sonar | `.github/workflows/sonar.yml`, `templates/sonar/` | One SonarQube Cloud scan of `develop` and of pull requests into it, never of promotion pull requests. |
 | settings | `profiles/`, `callers/`, `scripts/` | Desired GitHub settings per profile (rulesets, merge methods, Actions allowlist, security features) and a script that applies them with a dry run, a snapshot and a restore. |
 
@@ -77,11 +77,11 @@ Tests: `node --test scripts/test/*.test.mjs` (a fake GitHub in memory, no networ
 
 ## Adopting the code quality modules
 
-lint-js, lint-python and sonar are meant to be rolled out one pull request per repository. The workflows read the rules from files in the repository, so each repository copies the matching files from `templates/` first (merging them into its existing Biome or `pyproject.toml` config) and records its current findings as a baseline. Nothing then fails on day one, and a new violation fails the check.
+lint-js, lint-python and sonar are meant to be rolled out one pull request per repository. lint-js and lint-python are configuration, not reusable workflows: the repository declares the tools as exact-version dev dependencies, its own scripts run them, and its own workflow (copied from `callers/`) installs the dependencies and runs the scripts. Tools therefore run the same way locally, in the editor and in CI, and Dependabot bumps them like any other dependency. sonar stays a reusable workflow because it needs one shared token setup.
 
-Tool versions are inputs of the workflows (defaults below), each the newest release at least 7 days old when chosen. Dependabot does not read workflow inputs, so a bump is a pull request here that changes the defaults and the template pins together.
+The templates hold the rules, each repository copies them (merging into its existing Biome or `pyproject.toml` config) and records its current findings as a baseline. Nothing then fails on day one, and a new violation fails the check. Versions at the time the templates were written, each the newest release at least 7 days old:
 
-| Tool | Default | Release page |
+| Tool | Version | Release page |
 |---|---|---|
 | Biome | 2.5.15 | https://www.npmjs.com/package/@biomejs/biome |
 | knip | 6.41.0 | https://www.npmjs.com/package/knip |
@@ -90,44 +90,48 @@ Tool versions are inputs of the workflows (defaults below), each the newest rele
 | basedpyright | 1.40.2 | https://pypi.org/project/basedpyright/ |
 | sonarqube-scan-action | v8.3.0 (`d209202bc7d53ff1cc128f7f907dac145c9d6ae9`) | https://github.com/SonarSource/sonarqube-scan-action/releases |
 
+After adoption the repository's Dependabot (`npm` or `pip`/`uv`, plus `github-actions` for the workflow pins) keeps the tools current. Keep the Dependabot entry for each ecosystem the repository uses: without it the tools stay on the adoption version.
+
 ## lint-js
 
-1. Copy from `templates/lint-js/`: merge `biome-quality.jsonc` into `biome.json` (its override first in `overrides`), copy `knip.json` and `.jscpd.json` to the root, and for TypeScript copy `tsconfig.strict.json` next to each `tsconfig.json` and `tsc-baseline.sh` to `scripts/`.
-2. Record the baselines (run in the dev container or CI, after `npm ci`, with the tool versions of the workflow: a baseline written by another version can fail in CI):
+1. Install the tools as exact-version devDependencies (no `^`, so the config and the lockfile name one version):
+
+```sh
+npm install --save-dev --save-exact @biomejs/biome@2.5.15 knip@6.41.0 jscpd@5.4.1 typescript
+```
+
+2. Copy from `templates/lint-js/`: merge `biome-quality.jsonc` into `biome.json` (its override first in `overrides`), copy `knip.json` and `.jscpd.json` to the root, and for TypeScript copy `tsconfig.strict.json` next to each `tsconfig.json` and `tsc-baseline.sh` to `scripts/`. Point the `$schema` of `biome.json` at the installed package (`./node_modules/@biomejs/biome/configuration_schema.json`) so a Dependabot bump of Biome cannot disagree with it.
+3. Add the scripts. `check` is the one CI runs:
+
+```json
+{
+  "scripts": {
+    "lint": "biome lint .",
+    "typecheck": "sh scripts/tsc-baseline.sh tsconfig.strict.json tsc-baseline.txt",
+    "knip": "knip",
+    "dup": "jscpd --baseline .jscpd-baseline.json --fail-on-new-clones",
+    "check": "npm run lint && npm run typecheck && npm run knip && npm run dup"
+  }
+}
+```
+
+4. Record the baselines (run after `npm ci`, with the installed versions: a baseline written by another version can fail in CI):
 
 ```sh
 # Biome: one inline `biome-ignore ... baseline` comment per existing finding, in non-test files
 git ls-files -z -- '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.mts' '*.cjs' '*.cts' \
   ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*' ':(exclude,glob)**/test/**' \
   ':(exclude,glob)**/tests/**' ':(exclude,glob)**/e2e/**' |
-  xargs -0 npx @biomejs/biome@2.5.15 lint --suppress --reason=baseline \
+  xargs -0 npx biome lint --suppress --reason=baseline \
     --only=complexity/noExcessiveCognitiveComplexity --only=complexity/useMaxParams \
     --only=complexity/noExcessiveLinesPerFunction --only=suspicious/noImportCycles
 # jscpd: fingerprints of the clones that exist
-npx jscpd@5.4.1 --baseline .jscpd-baseline.json --update-baseline
+npx jscpd --baseline .jscpd-baseline.json --update-baseline
 # TypeScript: errors of the strict config, per tsconfig
 sh scripts/tsc-baseline.sh tsconfig.strict.json tsc-baseline.txt --write
 ```
 
-3. Add `.github/workflows/lint-js.yml`:
-
-```yaml
-name: Lint JS
-on:
-  pull_request:
-  push:
-    branches: [develop]
-permissions: {}
-jobs:
-  lint-js:
-    permissions:
-      contents: read
-    uses: ESchuderer/repo-baseline/.github/workflows/lint-js.yml@<commit sha>
-    with:
-      typecheck-command: sh scripts/tsc-baseline.sh tsconfig.strict.json tsc-baseline.txt
-```
-
-Inputs: `working-directory` (`.`), `node-version-file` (`.nvmrc`), `node-version` (wins over the file), `install-command` (`npm ci`), `biome`, `knip`, `jscpd` (each `true`), `typecheck-command` (empty: skipped), `biome-version`, `knip-version`, `jscpd-version`.
+5. Copy `callers/lint-js.yml` to `.github/workflows/lint-js.yml` (the job runs `npm ci` and `npm run check`; add a `.nvmrc` or set `node-version`). If the repository's ruleset requires a check by name, keep the workflow and job names so the check context does not change.
 
 | Rule | Threshold | Reason |
 |---|---|---|
@@ -135,42 +139,24 @@ Inputs: `working-directory` (`.`), `node-version-file` (`.nvmrc`), `node-version
 | Biome `useMaxParams` ([docs](https://biomejs.dev/linter/rules/use-max-params/)) | 5 | Same limit as ruff `PLR0913`, so both languages read alike. |
 | Biome `noExcessiveLinesPerFunction` ([docs](https://biomejs.dev/linter/rules/no-excessive-lines-per-function/)) | 80, blank lines and IIFEs skipped | The default is 50; 80 leaves room for a component or a request handler of about one screen. |
 | Biome `noImportCycles` ([docs](https://biomejs.dev/linter/rules/no-import-cycles/)) | on | No tuning; each cycle is a defect. |
-| knip ([docs](https://knip.dev/features/rules-and-filters)) | every issue type `warn` | Warnings print but do not fail. Move a type to `error` when its count reaches 0. |
-| jscpd ([docs](https://github.com/kucherenko/jscpd/blob/master/docs/rust.md#baseline)) | 100 tokens, JS and TS formats, tests excluded | Shorter matches are mostly idiom (imports, option objects). A baseline file tolerates the clones that exist. |
+| knip ([docs](https://knip.dev/features/rules-and-filters)) | `error` for every issue type whose count is 0, `warn` for the rest | Warnings print but do not fail, so a type must reach `error` as soon as its count is 0, or it gates nothing. |
+| jscpd ([docs](https://github.com/kucherenko/jscpd/blob/master/docs/rust.md#baseline)) | 100 tokens, JS and TS formats, tests excluded | Shorter matches are mostly idiom (imports, option objects). A baseline file tolerates the clones that exist. Remove jscpd and its baseline once the sonar module gates duplication on new code. |
 | TypeScript `strict`, `noUncheckedIndexedAccess` ([docs](https://www.typescriptlang.org/tsconfig/noUncheckedIndexedAccess.html)) | no new error | Few repositories pass `noUncheckedIndexedAccess` on day one (the pilot has 1,052 errors in one package). `tsc-baseline.sh` compares the error list without line numbers; shrink the baseline as errors are fixed. |
 
-Limits: a Biome suppression covers its function, so a baselined function can get worse without failing. Tests are exempt from the three size and complexity rules through the override; adapt its globs per repository. Biome suppressions in the `--only` run ignore `overrides`, which is why the baseline command leaves test paths out.
+Limits: a Biome suppression covers its function, so a baselined function can get worse without failing. Tests are exempt from the three size and complexity rules through the override; adapt its globs per repository. Biome suppressions in the `--only` run ignore `overrides`, which is why the baseline command leaves test paths out. The template enables only the four quality rules; turn on Biome's recommended rules (and a formatter) in the repository when its code is ready for them.
 
 ## lint-python
 
-1. Merge `templates/lint-python/pyproject-quality.toml` into `pyproject.toml` and adapt `include` and the per-path ignores (the CAD script glob there is an example).
-2. Record the baselines with the project's dependencies installed (so imports resolve) and the Python version of the workflow, as another version can change what basedpyright reports:
+1. Declare the tools as exact-version dev dependencies in the form the project already uses (`[project.optional-dependencies] dev`, a `[dependency-groups]` table or a requirements file): `ruff==0.17.1` and `basedpyright==1.40.2`.
+2. Merge `templates/lint-python/pyproject-quality.toml` into `pyproject.toml` and adapt `include` and the per-path ignores (the CAD script glob there is an example).
+3. Record the baselines with the project's dependencies installed (so imports resolve) and the Python version CI uses, as another version can change what basedpyright reports:
 
 ```sh
-pip install ruff==0.17.1 basedpyright==1.40.2
 ruff check --add-noqa .       # one `# noqa: CODE` per existing finding
 basedpyright --writebaseline  # writes .basedpyright/baseline.json
 ```
 
-3. Add `.github/workflows/lint-python.yml`:
-
-```yaml
-name: Lint Python
-on:
-  pull_request:
-  push:
-    branches: [develop]
-permissions: {}
-jobs:
-  lint-python:
-    permissions:
-      contents: read
-    uses: ESchuderer/repo-baseline/.github/workflows/lint-python.yml@<commit sha>
-    with:
-      install-command: pip install -r requirements.txt
-```
-
-Inputs: `working-directory` (`.`), `python-version` (`3.13`), `install-command` (empty), `ruff`, `basedpyright` (each `true`), `ruff-version`, `basedpyright-version`.
+4. Copy `callers/lint-python.yml` to `.github/workflows/lint-python.yml` and replace its install step with the project's own install of the dev dependencies. Keep the workflow and job names if a ruleset requires the check by name.
 
 Rule families: `E4`, `E7`, `E9`, `F`, `B`, `C4`, `C90`, `SIM`, `RET`, `PTH`, `PERF`, `RUF`, `UP`, `I`, `PT`, `ARG`, the pylint limits `PLR0911`, `PLR0912`, `PLR0913`, `PLR0915` and the families `PLE`, `PLW`, `PLC` ([rules](https://docs.astral.sh/ruff/rules/)). To adopt one family per pull request, leave the others out of `select` until their turn.
 
