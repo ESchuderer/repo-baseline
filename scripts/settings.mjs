@@ -28,6 +28,8 @@ export function readLive(run, slug) {
     try { return r.stdout.trim() ? JSON.parse(r.stdout) : {}; } catch { unreadable[key] = { http: null, message: 'not JSON' }; return undefined; }
   };
   const repo = get('repo', '');
+  // Offline or no login: the rest would fail the same way, one timeout at a time.
+  if (!repo) return { visibility: null, state: {}, unreadable };
   const actions = get('actions', '/actions/permissions');
   const state = {
     repo: repo && pick(repo, REPO_KEYS),
@@ -52,9 +54,10 @@ export function readLive(run, slug) {
   for (const k of Object.keys(state.security)) if (state.security[k] === undefined) delete state.security[k];
   // shortcut: the first 100 rulesets, GitHub's page limit; more than that per repository is not expected.
   const list = get('rulesets', '/rulesets?includes_parents=false&per_page=100');
-  if (Array.isArray(list)) {
-    state.rulesets = list.map((x) => get(`ruleset ${x.id}`, `/rulesets/${x.id}`)).filter(Boolean);
-  }
+  // One detail that cannot be read leaves the section out: a missing entry would read as a missing ruleset, and a POST
+  // would create a duplicate of it.
+  const details = Array.isArray(list) ? list.map((x) => get(`ruleset ${x.id}`, `/rulesets/${Number(x.id)}`)) : [];
+  if (Array.isArray(list) && details.every(Boolean)) state.rulesets = details;
   return { visibility: repo ? (repo.private ? 'private' : 'public') : null, state, unreadable };
 }
 
