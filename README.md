@@ -57,7 +57,7 @@ Tool versions are inputs of the workflows (defaults below), each the newest rele
 ## lint-js
 
 1. Copy from `templates/lint-js/`: merge `biome-quality.jsonc` into `biome.json` (its override first in `overrides`), copy `knip.json` and `.jscpd.json` to the root, and for TypeScript copy `tsconfig.strict.json` next to each `tsconfig.json` and `tsc-baseline.sh` to `scripts/`.
-2. Record the baselines (run in the dev container or CI, after `npm ci`):
+2. Record the baselines (run in the dev container or CI, after `npm ci`, with the tool versions of the workflow: a baseline written by another version can fail in CI):
 
 ```sh
 # Biome: one inline `biome-ignore ... baseline` comment per existing finding, in non-test files
@@ -108,7 +108,7 @@ Limits: a Biome suppression covers its function, so a baselined function can get
 ## lint-python
 
 1. Merge `templates/lint-python/pyproject-quality.toml` into `pyproject.toml` and adapt `include` and the per-path ignores (the CAD script glob there is an example).
-2. Record the baselines (with the project's dependencies installed, so imports resolve):
+2. Record the baselines with the project's dependencies installed (so imports resolve) and the Python version of the workflow, as another version can change what basedpyright reports:
 
 ```sh
 pip install ruff==0.17.1 basedpyright==1.40.2
@@ -151,12 +151,12 @@ Limits: `--add-noqa` is a per-line baseline in the code ([docs](https://docs.ast
 
 Owner steps, once per GitHub account and once per repository (nothing here can be done from a workflow):
 
-1. Import the GitHub account into SonarQube Cloud ([getting started](https://docs.sonarsource.com/sonarqube-cloud/getting-started/github), [import guide](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/creating-organization/importing-github-organization)) and choose the OSS plan: free for public repositories, unlimited branch and pull request analysis, custom quality gates; the Free plan analyzes only the main branch ([plans](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-subscription/subscription-plans)). Unverified: whether a personal account (not an organization) qualifies for the OSS plan.
+1. Import the GitHub account into SonarQube Cloud ([getting started](https://docs.sonarsource.com/sonarqube-cloud/getting-started/github), [import guide](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/creating-organization/importing-github-organization)) and choose the OSS plan: unlimited public repositories (no private projects), unlimited branch and pull request analysis, custom quality profiles and gates; its price is unverified; the Free plan analyzes only the main branch ([plans](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-subscription/subscription-plans)). Unverified: whether a personal account (not an organization) qualifies for the OSS plan.
 2. Per repository: import it as a project, then turn Automatic Analysis off under Administration, Analysis Method. CI analysis and Automatic Analysis cannot run on one project ([docs](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/automatic-analysis)).
 3. Per repository: add the token as the Actions secret `SONAR_TOKEN` ([docs](https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/ci-based-analysis/github-actions-for-sonarcloud)), and as a Dependabot secret too, since Dependabot pull requests do not get Actions secrets ([docs](https://docs.github.com/en/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions)).
 4. After the first scan, require the check on `develop`. Pick its exact name in the status check list of the ruleset: Sonar's documentation names it `SonarQube Code Analysis` while community reports name it `SonarCloud Code Analysis` (unverified which one a project shows). Do not require it on `main`: promotion pull requests are not scanned.
 
-Then copy `templates/sonar/sonar-project.properties` to the repository root and fill in the organization and project key, and add `.github/workflows/sonar.yml`:
+Then copy `templates/sonar/sonar-project.properties` to the repository root and fill in the organization and project key (`sonar.test.inclusions` only filters files inside `sonar.tests`, which is why the template sets both to `.` and excludes the test globs from the main code: [analysis scope](https://docs.sonarsource.com/sonarqube-server/10.7/project-administration/analysis-scope), a SonarQube Server page, as the SonarQube Cloud documentation has no page of its own for it), and add `.github/workflows/sonar.yml`:
 
 ```yaml
 name: Sonar
