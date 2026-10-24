@@ -1,0 +1,12 @@
+name: Promote
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  promote:
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ESchuderer/repo-baseline/.github/workflows/promote.yml@{{ref}}
