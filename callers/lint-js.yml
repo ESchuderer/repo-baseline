@@ -1,0 +1,11 @@
+name: Lint JS
+on:
+  pull_request:
+  push:
+    branches: [develop]
+permissions: {}
+jobs:
+  lint-js:
+    permissions:
+      contents: read
+    uses: ESchuderer/repo-baseline/.github/workflows/lint-js.yml@{{ref}}

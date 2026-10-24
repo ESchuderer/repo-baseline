@@ -10,6 +10,7 @@ Shared GitHub setup for ESchuderer's and OpenReloading's repositories: reusable 
 | lint-js | `.github/workflows/lint-js.yml`, `templates/lint-js/` | Biome (cognitive complexity, parameters, function length, import cycles), knip, jscpd and a TypeScript strictness gate, with baselines so nothing fails on day one. |
 | lint-python | `.github/workflows/lint-python.yml`, `templates/lint-python/` | ruff (bugbear, simplify, complexity and size limits, pathlib, pylint subset) and basedpyright with a baseline file. |
 | sonar | `.github/workflows/sonar.yml`, `templates/sonar/` | One SonarQube Cloud scan of `develop` and of pull requests into it, never of promotion pull requests. |
+| settings | `profiles/`, `callers/`, `scripts/` | Desired GitHub settings per profile (rulesets, merge methods, Actions allowlist, security features) and a script that applies them with a dry run, a snapshot and a restore. |
 
 ## promote
 
@@ -38,6 +39,41 @@ Requirements:
 - With an Actions allowlist, allow `ESchuderer/repo-baseline/.github/workflows/promote.yml@*`.
 
 Inputs: `source` (default `develop`), `target` (default `main`).
+
+## settings
+
+A profile is one JSON file in `profiles/` that names the settings a repository should have:
+
+| Profile | For | Applied |
+|---|---|---|
+| `oss` | Public repository: rulesets for `develop` (squash, linear history) and `main` (merge commit), merge methods, Actions allowlist with SHA pinning, workflow token read-only, private vulnerability reporting, Dependabot alerts and security updates, code scanning default setup, secret scanning with push protection | yes |
+| `private-advisory` | Private repository on a plan without rulesets and auto-merge: the same targets where the plan has them | never, reported only |
+
+Each profile also lists the caller workflows a repository should have (`callers/<module>.yml`, with `{{ref}}` for the commit to pin) and files such as `.github/dependabot.yml`. `requiredChecks` states the rule for the status checks of the two rulesets: those of `main` are a subset of those of `develop`, and `dependency-review` and `conventional` are not required on `main` (the promotion pull request is opened with `GITHUB_TOKEN`, see promote).
+
+Required status check names differ per repository, so the profile holds none. Pass them with `--develop-checks` and `--main-checks`; without them an existing ruleset keeps its checks and a new one is created without the rule.
+
+```sh
+# dry run (the default): prints each API call, writes nothing
+node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss
+# apply: writes a snapshot of the current settings first, then sends the calls in order
+node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss --develop-checks build,test --main-checks build --apply
+# restore a snapshot (a dry run unless --apply)
+node scripts/apply.mjs restore <snapshot file> --apply
+```
+
+- The script talks to GitHub through the `gh` CLI, so the signed-in token needs admin rights on the repository. Nothing here runs from a workflow.
+- Only settings the profile names are touched. Allowlist patterns are added to the existing ones, never removed. A ruleset is found by its branches (a hand-made one under another name is updated, not duplicated) and keeps its name, the pull request parameters the profile does not name, its other rules (a `PUT` replaces the whole rule list, so the script sends them back) and its status checks; its branches and bypass actors become the profile's. A second run reports nothing to change.
+- Switching `allowed_actions` from `all` to `selected` stops every action and reusable workflow that is not on the list: the dry run prints a warning, read it before `--apply`.
+- Calls go out in order: repository, Actions, rulesets, then the security features. A failed call stops the run; `--keep-going` sends the rest anyway and exits 1 (use it when one optional feature, such as code scanning on a repository with an advanced setup, is not available).
+- A snapshot (mode 0600) holds the settings as read before the first call (folder `repo-baseline/snapshots` in `$XDG_STATE_HOME`, by default the `.local/state` folder of the home directory, or `--snapshot-dir`) and, written after the calls, the ids of the rulesets the run created. Restore sets everything back to the snapshot and deletes those rulesets by id; it names the repository it writes to first, and refuses a file that is not a snapshot of this script. A restore only changes values: a snapshot from someone else can weaken settings of any repository you administer, so use your own.
+- A part GitHub does not return (a plan without rulesets, missing rights) is named and left alone.
+- Restore does not remove allowlist patterns that were added while `allowed_actions` was `all`, and a code scanning default setup change is asynchronous on GitHub's side (a second run right after can answer 409).
+- Not covered: organization settings, branch protection rules (rulesets only), secrets, the code scanning language list (default setup picks it).
+
+Endpoints used: [repository](https://docs.github.com/en/rest/repos/repos), [rulesets](https://docs.github.com/en/rest/repos/rules), [Actions permissions](https://docs.github.com/en/rest/actions/permissions), [code scanning default setup](https://docs.github.com/en/rest/code-scanning/code-scanning#update-a-code-scanning-default-setup-configuration). Unverified: whether a ruleset `PUT` replaces omitted fields (the script always sends the whole ruleset); whether an empty status check list is accepted (the script omits the rule instead). The script reads up to 100 rulesets per repository.
+
+Tests: `node --test scripts/test/*.test.mjs` (a fake GitHub in memory, no network).
 
 ## Adopting the code quality modules
 

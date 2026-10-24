@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "name": "oss",
+  "advisory": false,
+  "description": "Public repository: develop takes squash merges through pull requests, main takes the promotion pull request as a merge commit, Actions limited to an allowlist with SHA pinning, GitHub's free security features on.",
+  "repo": {
+    "allow_merge_commit": true,
+    "allow_squash_merge": true,
+    "allow_rebase_merge": false,
+    "allow_auto_merge": true,
+    "delete_branch_on_merge": true
+  },
+  "actions": {
+    "enabled": true,
+    "allowed_actions": "selected",
+    "sha_pinning_required": true
+  },
+  "selected": {
+    "github_owned_allowed": true,
+    "verified_allowed": false,
+    "patterns_allowed": ["ESchuderer/repo-baseline/.github/workflows/promote.yml@*"]
+  },
+  "workflow": {
+    "default_workflow_permissions": "read",
+    "can_approve_pull_request_reviews": true
+  },
+  "security": {
+    "private_vulnerability_reporting": true,
+    "dependabot_alerts": true,
+    "dependabot_security_updates": true,
+    "code_scanning_default_setup": "configured",
+    "secret_scanning": true,
+    "secret_scanning_push_protection": true
+  },
+  "rulesets": [
+    {
+      "name": "develop",
+      "target": "branch",
+      "enforcement": "active",
+      "conditions": { "ref_name": { "include": ["refs/heads/develop"], "exclude": [] } },
+      "bypass_actors": [],
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        { "type": "required_linear_history" },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "allowed_merge_methods": ["squash"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "main",
+      "target": "branch",
+      "enforcement": "active",
+      "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+      "bypass_actors": [],
+      "rules": [
+        { "type": "deletion" },
+        { "type": "non_fast_forward" },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": true,
+            "allowed_merge_methods": ["merge"]
+          }
+        }
+      ]
+    }
+  ],
+  "requiredChecks": {
+    "mainSubsetOfDevelop": true,
+    "notRequiredOnMain": ["dependency-review", "conventional"]
+  },
+  "callers": ["promote"],
+  "files": [".github/dependabot.yml"]
+}
