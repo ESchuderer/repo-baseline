@@ -16,7 +16,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.13'
-      # Replace with the project's own install of its dev dependencies (ruff and basedpyright are among them)
-      - run: pip install -r requirements-dev.txt
+      # ruff and basedpyright come from the hash-locked requirements-dev.txt (README, lint-python)
+      - run: pip install --only-binary :all: --require-hashes -r requirements-dev.txt
+      # basedpyright resolves imports from the project's own dependencies: replace with the project's install
+      - run: pip install -r requirements.txt
       - run: ruff check .
       - run: basedpyright

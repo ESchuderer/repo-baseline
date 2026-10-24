@@ -180,7 +180,15 @@ Limits: a Biome suppression covers its function, so a baselined function can get
 
 ## lint-python
 
-1. Declare the tools as exact-version dev dependencies in the form the project already uses (`[project.optional-dependencies] dev`, a `[dependency-groups]` table or a requirements file): `ruff==0.17.1` and `basedpyright==1.40.2`.
+1. Declare the tools in a hash-locked file: a source `requirements-dev.in` with `ruff==0.17.1` and `basedpyright==1.40.2`, compiled with the Python version CI uses, and installed in CI with `--require-hashes`. SonarQube flags an install without hashes (rule `githubactions:S8544`, found on AutoLever), and the lock also stops a changed package from installing silently.
+
+```sh
+pip install pip-tools   # use a pip version that pip-tools supports; pip-tools 7.5.3 failed to import under pip 26
+pip-compile --generate-hashes --strip-extras -o requirements-dev.txt requirements-dev.in
+pip install --only-binary :all: --require-hashes -r requirements-dev.txt
+```
+
+   `--require-hashes` applies to every requirement in the file, so keep `-r requirements.txt` out of it and install the project's own dependencies in a separate step the way the project already does. Dependabot's `pip` ecosystem lists pip-compile as supported ([docs](https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories)); unverified whether it bumps the `.in` and `.txt` pair together until the first Dependabot pull request.
 2. Merge `templates/lint-python/pyproject-quality.toml` into `pyproject.toml` and adapt `include` and the per-path ignores (the CAD script glob there is an example).
 3. Record the baselines with the project's dependencies installed (so imports resolve) and the Python version CI uses, as another version can change what basedpyright reports:
 
