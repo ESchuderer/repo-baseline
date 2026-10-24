@@ -1,0 +1,33 @@
+// Merge `linter.rules` and `overrides` into the repository's biome.json (rename it to biome.jsonc for comments).
+// Keep the `$schema` version equal to the biome-version input of the lint-js workflow.
+{
+  "linter": {
+    "rules": {
+      "complexity": {
+        "noExcessiveCognitiveComplexity": { "level": "error", "options": { "maxAllowedComplexity": 15 } },
+        "useMaxParams": { "level": "error", "options": { "max": 5 } },
+        "noExcessiveLinesPerFunction": {
+          "level": "error",
+          "options": { "maxLines": 80, "skipBlankLines": true, "skipIifes": true }
+        }
+      },
+      "suspicious": { "noImportCycles": "error" }
+    }
+  },
+  "overrides": [
+    {
+      // Tests are exempt from the size and complexity rules (long describe callbacks, many fixtures): adapt the globs to the repository.
+      // List this override before the repository's other overrides: a later override that matches the same file wins.
+      "includes": ["**/*.test.*", "**/*.spec.*", "**/test/**", "**/tests/**", "**/e2e/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off",
+            "useMaxParams": "off",
+            "noExcessiveLinesPerFunction": "off"
+          }
+        }
+      }
+    }
+  ]
+}
