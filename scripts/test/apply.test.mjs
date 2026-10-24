@@ -33,7 +33,7 @@ function fakeGh(db, { failOn } = {}) {
     const path = (a === '-X' ? c : a).replace(`repos/${SLUG}`, '');
     const body = input ? JSON.parse(input) : undefined;
     calls.push({ method, path, body });
-    if (method !== 'GET' && failOn?.(method, path)) return bad(500, 'boom');
+    if (failOn?.(method, path)) return bad(method === 'GET' ? 403 : 500, 'boom');
     if (path === '') {
       if (method === 'PATCH') {
         const { security_and_analysis: s, ...rest } = body;
@@ -112,7 +112,7 @@ test('apply snapshots first, keeps the existing checks and allowlist entries, an
 test('the snapshot is on disk before the first write', () => {
   const db = drifted();
   let seen = null;
-  const t = cli(db, [], { failOn: () => { seen ??= readdirSync(t.snaps).length; return false; } });
+  const t = cli(db, [], { failOn: (m) => { if (m !== 'GET') seen ??= readdirSync(t.snaps).length; return false; } });
   t.go([SLUG, '--profile', 'oss', '--apply']);
   assert.equal(seen, 1);
 });
@@ -150,8 +150,22 @@ test('a ruleset set by hand under another name is updated, not duplicated, and k
   assert.deepEqual(db.rulesets[0].rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
 });
 
+test('a ruleset whose detail cannot be read is never created again', () => {
+  const db = drifted();
+  const t = cli(db, [], { failOn: (m, p) => m === 'GET' && p === '/rulesets/1' });
+  assert.equal(t.go([SLUG, '--profile', 'oss', '--apply']), 0);
+  assert.match(t.text(), /not readable, left alone: ruleset 1 \(HTTP 403\)/);
+  assert.ok(!t.gh.writes().some((c) => c.path.includes('/rulesets')), 'no ruleset write when one cannot be compared');
+});
+
+test('an unreadable repository ends after one request', () => {
+  const t = cli(drifted(), [], { failOn: (m, p) => p === '' });
+  assert.equal(t.go([SLUG, '--profile', 'oss']), 1);
+  assert.equal(t.gh.calls.length, 1);
+});
+
 test('a failed call stops the run and names the restore command', () => {
-  const t = cli(drifted(), [], { failOn: (m, p) => p === '/actions/permissions' });
+  const t = cli(drifted(), [], { failOn: (m, p) => m !== 'GET' && p === '/actions/permissions' });
   assert.equal(t.go([SLUG, '--profile', 'oss', '--apply']), 1);
   assert.match(t.text(), /failed PUT repos\/o\/r\/actions\/permissions: gh: boom/);
   assert.match(t.text(), /restore: node scripts\/apply\.mjs restore "/);
@@ -161,7 +175,7 @@ test('a failed call stops the run and names the restore command', () => {
 
 test('--keep-going carries on after a failure and exits 1', () => {
   const db = drifted();
-  const t = cli(db, [], { failOn: (m, p) => p === '/actions/permissions' });
+  const t = cli(db, [], { failOn: (m, p) => m !== 'GET' && p === '/actions/permissions' });
   assert.equal(t.go([SLUG, '--profile', 'oss', '--apply', '--keep-going']), 1);
   assert.equal(db.pvr, true);
   assert.ok(db.rulesets.some((r) => r.name === 'main'));
