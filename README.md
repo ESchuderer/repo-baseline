@@ -100,7 +100,7 @@ After adoption the repository's Dependabot (`npm` or `pip`/`uv`, plus `github-ac
 npm install --save-dev --save-exact @biomejs/biome@2.5.15 knip@6.41.0 jscpd@5.4.1 typescript
 ```
 
-2. Copy from `templates/lint-js/`: merge `biome-quality.jsonc` into `biome.json` (its override first in `overrides`), copy `knip.json` and `.jscpd.json` to the root, and for TypeScript copy `tsconfig.strict.json` next to each `tsconfig.json` and `tsc-baseline.sh` to `scripts/`. Point the `$schema` of `biome.json` at the installed package (`./node_modules/@biomejs/biome/configuration_schema.json`) so a Dependabot bump of Biome cannot disagree with it.
+2. Copy from `templates/lint-js/`: merge `biome-quality.jsonc` into `biome.json` (its override first in `overrides`), copy `knip.json` and `.jscpd.json` to the root, and for TypeScript copy `tsconfig.strict.json` next to each `tsconfig.json` and `tsc-baseline.sh` to `scripts/`. Point the `$schema` of `biome.json` and `knip.json` at the installed packages (`./node_modules/@biomejs/biome/configuration_schema.json`, `./node_modules/knip/schema.json`) so a Dependabot bump cannot disagree with them.
 3. Add the scripts. `check` is the one CI runs:
 
 ```json
