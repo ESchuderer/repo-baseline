@@ -214,6 +214,8 @@ Limits: `--add-noqa` is a per-line baseline in the code ([docs](https://docs.ast
 
 ## sonar
 
+Optional. SonarQube Cloud already analyzes a repository once its GitHub app is installed and Automatic Analysis is on: the `SonarCloud Code Analysis` check then appears on pull requests with no workflow, token or properties file (seen on AutoLever, Feeder, Ballistics, BuildGuide and BenchKeeper). This module is for CI-based analysis, which Automatic Analysis cannot replace when a repository wants to import a coverage report into the gate. Without that need, skip the steps below.
+
 Owner steps, once per GitHub account and once per repository (nothing here can be done from a workflow):
 
 1. Import the GitHub account into SonarQube Cloud ([getting started](https://docs.sonarsource.com/sonarqube-cloud/getting-started/github), [import guide](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/creating-organization/importing-github-organization)) and choose the OSS plan: unlimited public repositories (no private projects), unlimited branch and pull request analysis, custom quality profiles and gates; its price is unverified; the Free plan analyzes only the main branch ([plans](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-subscription/subscription-plans)). Unverified: whether a personal account (not an organization) qualifies for the OSS plan.
