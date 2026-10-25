@@ -176,6 +176,8 @@ sh scripts/tsc-baseline.sh tsconfig.strict.json tsc-baseline.txt --write
 | jscpd ([docs](https://github.com/kucherenko/jscpd/blob/master/docs/rust.md#baseline)) | 100 tokens, JS and TS formats, tests excluded | Shorter matches are mostly idiom (imports, option objects). A baseline file tolerates the clones that exist. Remove jscpd and its baseline once the sonar module gates duplication on new code. |
 | TypeScript `strict`, `noUncheckedIndexedAccess` ([docs](https://www.typescriptlang.org/tsconfig/noUncheckedIndexedAccess.html)) | no new error | Few repositories pass `noUncheckedIndexedAccess` on day one (the pilot has 1,052 errors in one package). `tsc-baseline.sh` compares the error list without line numbers; shrink the baseline as errors are fixed. |
 
+SonarQube flags a plain `npm ci` in a workflow (rule `githubactions:S6505`, found on Ballistics: install scripts may run). Use `npm ci --ignore-scripts` where nothing needs a postinstall (and run the needed script by name afterwards), otherwise accept the rule in the SonarQube Cloud project and say why in the pull request. The rule matters only for repositories where the sonar module is on.
+
 Limits: a Biome suppression covers its function, so a baselined function can get worse without failing. Tests are exempt from the three size and complexity rules through the override; adapt its globs per repository. Biome suppressions in the `--only` run ignore `overrides`, which is why the baseline command leaves test paths out. The template enables only the four quality rules; turn on Biome's recommended rules (and a formatter) in the repository when its code is ready for them.
 
 ## lint-python
