@@ -36,7 +36,7 @@ Requirements:
 
 - Settings, Actions, General: "Allow GitHub Actions to create and approve pull requests" on (`can_approve_pull_request_reviews`).
 - The pull request is opened with `GITHUB_TOKEN`, so its `pull_request` runs wait until someone with write access approves them ([GitHub docs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)). The `main` ruleset should only require checks whose jobs also run on pushes to `develop` (their results are on the same commit). Pull-request-only checks such as dependency review or a title lint stay required on `develop`.
-- `main` allows the merge commit method.
+- `main` allows the merge commit method. `develop` allows squash and merge commit: feature pull requests are squashed into `develop` by convention, and the back-merge of `main` into `develop` after a release is a merge commit.
 - With an Actions allowlist, allow `ESchuderer/repo-baseline/.github/workflows/promote.yml@*`.
 
 Inputs: `source` (default `develop`), `target` (default `main`).
@@ -47,7 +47,7 @@ A profile is one JSON file in `profiles/` that names the settings a repository s
 
 | Profile | For | Applied |
 |---|---|---|
-| `oss` | Public repository: rulesets for `develop` (squash, linear history) and `main` (merge commit), merge methods, Actions allowlist with SHA pinning, workflow token read-only, private vulnerability reporting, Dependabot alerts and security updates, code scanning default setup, secret scanning with push protection | yes |
+| `oss` | Public repository: rulesets for `develop` (squash and merge commit) and `main` (merge commit), merge methods, Actions allowlist with SHA pinning, workflow token read-only, private vulnerability reporting, Dependabot alerts and security updates, code scanning default setup, secret scanning with push protection | yes |
 | `private-advisory` | Private repository on a plan without rulesets and auto-merge: the same targets where the plan has them | never, reported only |
 
 Each profile also lists the caller workflows a repository should have (`callers/<module>.yml`, with `{{ref}}` for the commit to pin) and files such as `.github/dependabot.yml`. `requiredChecks` states the rule for the status checks of the two rulesets: those of `main` are a subset of those of `develop`, and `dependency-review` and `conventional` are not required on `main` (the promotion pull request is opened with `GITHUB_TOKEN`, see promote).
@@ -100,7 +100,7 @@ Files in `templates/ci/`:
 | File | Use |
 |---|---|
 | `ci.yml` | CI skeleton with the `workflows` job (actionlint and zizmor) and `dependency-review`; add the repository's own jobs, each with the same `if`, `timeout-minutes` and `permissions`. |
-| `pr-title.yml` | Conventional Commits check of the pull request title for repositories that squash-merge into `develop` (require `conventional` on `develop` only). |
+| `pr-title.yml` | Conventional Commits check of the pull request title for repositories that squash-merge feature pull requests into `develop` (require `conventional` on `develop` only). |
 | `scorecard.yml` | OpenSSF Scorecard weekly. Replace the repository name in its `if`. |
 | `dependabot.yml` | Ecosystem entries to keep or delete. |
 
