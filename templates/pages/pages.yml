@@ -1,0 +1,92 @@
+name: Pages
+
+# Copy to .github/workflows/pages.yml (README, Release and Pages). One workflow builds both editions into one artifact,
+# because a Pages deployment replaces the whole site: the root is the latest release, built from its tag, and /next/ is
+# main. Until the first release exists the root redirects to /next/.
+# Each edition is built by the build script of its own checkout (`npm run build` writing to dist/) with EDITION
+# (stable or next) and BASE_PATH set; use EDITION to give browser storage (IndexedDB, localStorage, service worker
+# cache) a different name per edition. For a custom domain or a user site, BASE_PATH is empty for the root edition.
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          tag=$(gh release list --repo "$REPO" --exclude-drafts --exclude-pre-releases --json tagName,isLatest \
+            --jq '.[] | select(.isLatest) | .tagName')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: next
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ steps.latest.outputs.tag != '' }}
+        with:
+          ref: ${{ steps.latest.outputs.tag }}
+          path: stable
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Build main
+        working-directory: next
+        env:
+          EDITION: next
+          BASE_PATH: /${{ github.event.repository.name }}/next
+        run: npm ci --ignore-scripts && npm run build
+      - name: Build latest release
+        if: ${{ steps.latest.outputs.tag != '' }}
+        working-directory: stable
+        env:
+          EDITION: stable
+          BASE_PATH: /${{ github.event.repository.name }}
+        run: npm ci --ignore-scripts && npm run build
+      - name: Assemble site
+        env:
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: |
+          mkdir -p _site/next
+          cp -R next/dist/. _site/next/
+          if [ -n "$TAG" ]; then
+            cp -R stable/dist/. _site/
+          else
+            echo '<!doctype html><meta http-equiv="refresh" content="0; url=next/">' > _site/index.html
+          fi
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
