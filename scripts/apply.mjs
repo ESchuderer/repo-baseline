@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Applies a settings profile (profiles/<name>.json) to one repository, or restores a snapshot of it.
-//   node scripts/apply.mjs <owner/repo> --profile <name> [--develop-checks a,b] [--main-checks a,b] [--apply] [--keep-going] [--snapshot-dir dir]
+//   node scripts/apply.mjs <owner/repo> --profile <name> [--checks a,b] [--apply] [--keep-going] [--snapshot-dir dir]
 //   node scripts/apply.mjs restore <snapshot.json> [--apply]
 // Without --apply it only prints each API call. With it, the current settings are written to a snapshot file first.
 // Calls go through the gh CLI, so the token needs admin rights on the repository.
@@ -12,7 +12,7 @@ import { parseArgs } from 'node:util';
 import { SLUG, execute, ghRun, plan, readLive } from './settings.mjs';
 
 const root = join(fileURLToPath(import.meta.url), '../..');
-const OPTIONS = { profile: { type: 'string' }, apply: { type: 'boolean' }, 'develop-checks': { type: 'string' }, 'main-checks': { type: 'string' }, 'snapshot-dir': { type: 'string' }, 'keep-going': { type: 'boolean' } };
+const OPTIONS = { profile: { type: 'string' }, apply: { type: 'boolean' }, checks: { type: 'string' }, 'snapshot-dir': { type: 'string' }, 'keep-going': { type: 'boolean' } };
 const list = (s) => { const l = (s ?? '').split(',').map((x) => x.trim()).filter(Boolean); return l.length ? l : undefined; };
 
 export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'repo-baseline/snapshots') } = {}) {
@@ -35,12 +35,8 @@ export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = j
     slug = positionals[0];
     if (!slug || !SLUG.test(slug) || !/^[\w-]+$/.test(o.profile ?? '')) { say('usage: apply.mjs <owner/repo> --profile <name> [--apply]   |   apply.mjs restore <snapshot.json> [--apply]'); return 2; }
     desired = JSON.parse(readFileSync(join(root, 'profiles', `${o.profile}.json`), 'utf8'));
-    opts = { checks: { develop: list(o['develop-checks']), main: list(o['main-checks']) } };
-    for (const k of Object.keys(opts.checks)) if (!opts.checks[k]) delete opts.checks[k];
-    // The rule of the profile's requiredChecks: main's checks come from develop's and exclude the pull-request-only ones.
-    const rc = desired.requiredChecks ?? {};
-    const bad = (opts.checks.main ?? []).filter((c) => rc.notRequiredOnMain?.includes(c) || (rc.mainSubsetOfDevelop && opts.checks.develop && !opts.checks.develop.includes(c)));
-    if (bad.length) { say(`--main-checks ${bad.join(', ')} breaks the profile's requiredChecks (not on develop, or pull request only)`); return 2; }
+    // The ruleset of the profile is named main; its status checks come from --checks.
+    opts = { checks: list(o.checks) ? { main: list(o.checks) } : {} };
   }
   const live = readLive(run, slug);
   if (!live.state.repo) { say(`cannot read ${slug}: ${live.unreadable.repo?.message ?? 'no access'}`); return 1; }

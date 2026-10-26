@@ -4,7 +4,7 @@
   "advisory": true,
   "description": "Private repository on a plan without rulesets or auto-merge: the same targets as oss, reported and never applied. Features the plan lacks (rulesets, private vulnerability reporting, code scanning, secret scanning) are reported as unavailable.",
   "repo": {
-    "allow_merge_commit": true,
+    "allow_merge_commit": false,
     "allow_squash_merge": true,
     "allow_rebase_merge": false,
     "delete_branch_on_merge": true
@@ -22,42 +22,6 @@
     "dependabot_security_updates": true
   },
   "rulesets": [
-    {
-      "name": "develop",
-      "target": "branch",
-      "enforcement": "active",
-      "conditions": {
-        "ref_name": {
-          "include": [
-            "refs/heads/develop"
-          ],
-          "exclude": []
-        }
-      },
-      "bypass_actors": [],
-      "rules": [
-        {
-          "type": "deletion"
-        },
-        {
-          "type": "non_fast_forward"
-        },
-        {
-          "type": "pull_request",
-          "parameters": {
-            "required_approving_review_count": 0,
-            "dismiss_stale_reviews_on_push": false,
-            "require_code_owner_review": false,
-            "require_last_push_approval": false,
-            "required_review_thread_resolution": true,
-            "allowed_merge_methods": [
-              "merge",
-              "squash"
-            ]
-          }
-        }
-      ]
-    },
     {
       "name": "main",
       "target": "branch",
@@ -79,6 +43,9 @@
           "type": "non_fast_forward"
         },
         {
+          "type": "required_linear_history"
+        },
+        {
           "type": "pull_request",
           "parameters": {
             "required_approving_review_count": 0,
@@ -87,23 +54,14 @@
             "require_last_push_approval": false,
             "required_review_thread_resolution": true,
             "allowed_merge_methods": [
-              "merge"
+              "squash"
             ]
           }
         }
       ]
     }
   ],
-  "requiredChecks": {
-    "mainSubsetOfDevelop": true,
-    "notRequiredOnMain": [
-      "dependency-review",
-      "conventional"
-    ]
-  },
-  "callers": [
-    "promote"
-  ],
+  "callers": [],
   "files": [
     ".github/dependabot.yml"
   ]

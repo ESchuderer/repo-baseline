@@ -1,15 +1,15 @@
 name: Sonar
 
 # Reusable: one SonarQube Cloud scan with SonarSource/sonarqube-scan-action. It scans pushes to `branch` and pull
-# requests into `branch`, and nothing else, so a promotion pull request to the release branch is never scanned even
-# when the caller triggers on every pull request. Fork pull requests are skipped: GitHub gives them no secret.
+# requests into `branch`, and nothing else, so a pull request into another branch is never scanned even when the
+# caller triggers on every pull request. Fork pull requests are skipped: GitHub gives them no secret.
 # Put the job in the same workflow as the tests when the scan imports their coverage (`coverage-artifact`).
 on:
   workflow_call:
     inputs:
       branch:
         type: string
-        default: develop
+        default: main
       coverage-artifact:
         type: string
         default: ''

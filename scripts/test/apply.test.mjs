@@ -85,26 +85,28 @@ test('dry run prints every call and writes nothing', () => {
   assert.equal(t.gh.writes().length, 0);
   assert.match(t.text(), /PATCH {2}repos\/o\/r {2}\(repository settings/);
   assert.match(t.text(), /create ruleset main/);
-  assert.match(t.text(), /update ruleset develop/);
+  assert.doesNotMatch(t.text(), /ruleset develop|rulesets\/1/, 'a live ruleset for develop is left for the owner to delete');
   assert.match(t.text(), /dry run, nothing written/);
   assert.equal(readdirSync(t.snaps).length, 0);
 });
 
-test('apply snapshots first, keeps the existing checks and allowlist entries, and a second run changes nothing', () => {
+test('apply snapshots first, keeps the allowlist entries, leaves a develop ruleset alone, and a second run changes nothing', () => {
   const db = drifted();
   const t = cli(db, [], {});
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--main-checks', 'build', '--apply']), 0);
+  assert.equal(t.go([SLUG, '--profile', 'oss', '--checks', 'build', '--apply']), 0);
   assert.equal(readdirSync(t.snaps).length, 1);
-  assert.deepEqual(db.selected.patterns_allowed, ['own/thing@*', 'ESchuderer/repo-baseline/.github/workflows/promote.yml@*']);
-  assert.deepEqual(db.repo, { allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: false, allow_auto_merge: true, delete_branch_on_merge: true });
+  assert.deepEqual(db.selected.patterns_allowed, ['own/thing@*']);
+  assert.deepEqual(db.repo, { allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: false, allow_auto_merge: true, delete_branch_on_merge: true });
   assert.deepEqual([db.pvr, db.alerts, db.fixes, db.code, db.scanning, db.pushProtection], [true, true, true, 'configured', true, true]);
   const develop = db.rulesets.find((r) => r.name === 'develop');
   assert.deepEqual(develop.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'build', integration_id: 15368 }]);
-  assert.deepEqual(develop.rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['merge', 'squash']);
-  assert.equal(develop.rules.find((r) => r.type === 'pull_request').parameters.require_extra_approval_for_unattributed_changes, true);
-  assert.deepEqual(db.rulesets.find((r) => r.name === 'main').rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'build' }]);
+  assert.deepEqual(develop.rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['merge', 'squash', 'rebase']);
+  const main = db.rulesets.find((r) => r.name === 'main');
+  assert.deepEqual(main.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'build' }]);
+  assert.deepEqual(main.rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
+  assert.ok(main.rules.some((r) => r.type === 'required_linear_history'));
   const before = t.gh.writes().length;
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--main-checks', 'build', '--apply']), 0);
+  assert.equal(t.go([SLUG, '--profile', 'oss', '--checks', 'build', '--apply']), 0);
   assert.match(t.text(), /nothing to change/);
   assert.equal(t.gh.writes().length, before);
 });
@@ -144,10 +146,11 @@ test('an advisory profile reports and never writes, even with --apply', () => {
 test('a ruleset set by hand under another name is updated, not duplicated, and keeps its name', () => {
   const db = drifted();
   db.rulesets[0].name = 'default branch';
+  db.rulesets[0].conditions.ref_name.include = ['refs/heads/main'];
   const t = cli(db, [], {});
   t.go([SLUG, '--profile', 'oss', '--apply']);
-  assert.deepEqual(db.rulesets.map((r) => r.name), ['default branch', 'main']);
-  assert.deepEqual(db.rulesets[0].rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['merge', 'squash']);
+  assert.deepEqual(db.rulesets.map((r) => r.name), ['default branch']);
+  assert.deepEqual(db.rulesets[0].rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
 });
 
 test('a ruleset whose detail cannot be read is never created again', () => {
@@ -183,13 +186,14 @@ test('--keep-going carries on after a failure and exits 1', () => {
 
 test('a PUT keeps the live rules the profile does not name and the checks, and sets conditions and bypass actors', () => {
   const db = drifted();
+  db.rulesets[0].conditions.ref_name.include = ['refs/heads/main'];
   db.rulesets[0].rules.push({ type: 'required_signatures' });
   db.rulesets[0].bypass_actors = [{ actor_id: 5, actor_type: 'RepositoryRole', bypass_mode: 'always' }];
   const t = cli(db, [], {});
   t.go([SLUG, '--profile', 'oss', '--apply']);
-  const develop = db.rulesets.find((r) => r.name === 'develop');
-  assert.deepEqual(develop.rules.map((r) => r.type).sort(), ['deletion', 'non_fast_forward', 'pull_request', 'required_signatures', 'required_status_checks']);
-  assert.deepEqual(develop.bypass_actors, []);
+  const [kept] = db.rulesets;
+  assert.deepEqual(kept.rules.map((r) => r.type).sort(), ['deletion', 'non_fast_forward', 'pull_request', 'required_linear_history', 'required_signatures', 'required_status_checks']);
+  assert.deepEqual(kept.bypass_actors, []);
 });
 
 test('turning features off puts security updates before alerts; the other way round when turning on', () => {
@@ -210,14 +214,13 @@ test('turning features off puts security updates before alerts; the other way ro
   assert.deepEqual(t2.gh.writes().map((c) => c.path).filter((p) => /vulnerability-alerts|automated-security-fixes/.test(p)), ['/vulnerability-alerts', '/automated-security-fixes']);
 });
 
-test('required checks passed by hand follow the profile; empty lists are ignored', () => {
+test('required checks come from --checks, any name is accepted, and empty lists are ignored', () => {
   const t = cli(drifted(), [], {});
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--main-checks', 'dependency-review']), 2);
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--develop-checks', 'a', '--main-checks', 'b']), 2);
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--develop-checks', 'a,b', '--main-checks', 'a']), 0);
+  assert.equal(t.go([SLUG, '--profile', 'oss', '--checks', 'dependency-review,conventional']), 0);
+  assert.equal(t.go([SLUG, '--profile', 'oss', '--develop-checks', 'a']), 2, 'the flags of the two-branch flow are gone');
   const db = drifted();
   const u = cli(db, [], {});
-  u.go([SLUG, '--profile', 'oss', '--main-checks', ',', '--apply']);
+  u.go([SLUG, '--profile', 'oss', '--checks', ',', '--apply']);
   assert.deepEqual(db.rulesets.find((r) => r.name === 'main').rules.filter((r) => r.type === 'required_status_checks'), []);
 });
 
@@ -251,6 +254,11 @@ test('the profiles in the repository parse and agree with each other', () => {
     const p = JSON.parse(readFileSync(new URL(`../../profiles/${name}.json`, import.meta.url), 'utf8'));
     assert.equal(p.schemaVersion, 1);
     assert.equal(p.name, name);
+    assert.deepEqual(p.rulesets.map((r) => r.name), ['main']);
+    const rules = p.rulesets[0].rules;
+    assert.deepEqual(rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
+    assert.ok(rules.some((r) => r.type === 'required_linear_history'));
+    assert.equal(p.repo.allow_merge_commit, false);
     for (const c of p.callers) assert.ok(existsSync(new URL(`../../callers/${c}.yml`, import.meta.url)), `${c} caller`);
   }
 });
