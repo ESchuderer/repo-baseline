@@ -1,14 +1,11 @@
 name: CI
 
 # Copy to .github/workflows/ci.yml and add the repository's own jobs next to the two below (README, CI conventions).
-# - push runs on develop only; main receives merge commits of develop, so the promote pull request needs no run of its own.
-# - the promote pull request (head develop, base main, same repository) skips every job: the push run on the same commit
-#   already holds the results. The condition names base and head repository too, because a skipped required check counts
-#   as passing: a fork's branch called `develop` must not skip the checks. Do not filter `pull_request` by branch
-#   instead: release-please pull requests target main and need their checks.
+# - pull requests run every job, and so does the push to main after a squash merge. Do not filter `pull_request` by
+#   branch: release-please pull requests target main and need their checks.
 on:
   push:
-    branches: [develop]
+    branches: [main]
   pull_request:
 
 permissions: {}
@@ -19,7 +16,6 @@ concurrency:
 
 jobs:
   workflows:
-    if: ${{ !(github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -35,9 +31,9 @@ jobs:
           version: 1.31.1
           advanced-security: false
 
-  # Pull requests only: it compares the pull request's dependencies with its base, so it must not be required on main.
+  # Pull requests only: it compares the pull request's dependencies with its base.
   dependency-review:
-    if: ${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

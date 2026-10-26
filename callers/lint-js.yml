@@ -2,7 +2,7 @@ name: Lint JS
 on:
   pull_request:
   push:
-    branches: [develop]
+    branches: [main]
 permissions: {}
 jobs:
   lint-js:

@@ -6,40 +6,11 @@ Shared GitHub setup for ESchuderer's and OpenReloading's repositories: reusable 
 
 | Module | File | What it does |
 |---|---|---|
-| promote | `.github/workflows/promote.yml` | Keeps one open pull request from `develop` to `main` that lists the commits `main` lacks. Merging it with a merge commit is the release. |
-| ci | `templates/ci/`, README section CI conventions | Copy-in workflows and rules for lean CI: a CI skeleton (workflow lint, dependency review, concurrency, timeouts, no duplicate runs on the promote pull request), pr-title, scorecard and a Dependabot template. No reusable workflow. |
+| ci | `templates/ci/`, README section CI conventions | Copy-in workflows and rules for lean CI: a CI skeleton (workflow lint, dependency review, concurrency, timeouts), pr-title, scorecard and a Dependabot template. No reusable workflow. |
 | lint-js | `callers/lint-js.yml`, `templates/lint-js/` | Configuration for JavaScript and TypeScript repositories: Biome (lint, cognitive complexity, parameters, function length, import cycles), knip, jscpd and a TypeScript strictness gate, run by npm scripts of the repository with the tools as its devDependencies. No reusable workflow. |
 | lint-python | `callers/lint-python.yml`, `templates/lint-python/` | Configuration for Python repositories: ruff (bugbear, simplify, complexity and size limits, pathlib, pylint subset) and basedpyright with a baseline file, installed from the repository's dev dependencies. No reusable workflow. |
-| sonar | `.github/workflows/sonar.yml`, `templates/sonar/` | One SonarQube Cloud scan of `develop` and of pull requests into it, never of promotion pull requests. |
+| sonar | `.github/workflows/sonar.yml`, `templates/sonar/` | One SonarQube Cloud scan of `main` and of pull requests into it. |
 | settings | `profiles/`, `callers/`, `scripts/` | Desired GitHub settings per profile (rulesets, merge methods, Actions allowlist, security features) and a script that applies them with a dry run, a snapshot and a restore. |
-
-## promote
-
-Add `.github/workflows/promote.yml` to the repository:
-
-```yaml
-name: Promote
-on:
-  push:
-    branches: [develop]
-  workflow_dispatch:
-permissions: {}
-jobs:
-  promote:
-    permissions:
-      contents: read
-      pull-requests: write
-    uses: ESchuderer/repo-baseline/.github/workflows/promote.yml@<commit sha> # v0.1.0
-```
-
-Requirements:
-
-- Settings, Actions, General: "Allow GitHub Actions to create and approve pull requests" on (`can_approve_pull_request_reviews`).
-- The pull request is opened with `GITHUB_TOKEN`, so its `pull_request` runs wait until someone with write access approves them ([GitHub docs](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)). The `main` ruleset should only require checks whose jobs also run on pushes to `develop` (their results are on the same commit). Pull-request-only checks such as dependency review or a title lint stay required on `develop`.
-- `main` allows the merge commit method. `develop` allows squash and merge commit: feature pull requests are squashed into `develop` by convention, and the back-merge of `main` into `develop` after a release is a merge commit.
-- With an Actions allowlist, allow `ESchuderer/repo-baseline/.github/workflows/promote.yml@*`.
-
-Inputs: `source` (default `develop`), `target` (default `main`).
 
 ## settings
 
@@ -47,18 +18,18 @@ A profile is one JSON file in `profiles/` that names the settings a repository s
 
 | Profile | For | Applied |
 |---|---|---|
-| `oss` | Public repository: rulesets for `develop` (squash and merge commit) and `main` (merge commit), merge methods, Actions allowlist with SHA pinning, workflow token read-only, private vulnerability reporting, Dependabot alerts and security updates, code scanning default setup, secret scanning with push protection | yes |
+| `oss` | Public repository: one `main` ruleset (squash only, linear history), squash-only merge setting, Actions allowlist with SHA pinning, workflow token read-only, private vulnerability reporting, Dependabot alerts and security updates, code scanning default setup, secret scanning with push protection | yes |
 | `private-advisory` | Private repository on a plan without rulesets and auto-merge: the same targets where the plan has them | never, reported only |
 
-Each profile also lists the caller workflows a repository should have (`callers/<module>.yml`, with `{{ref}}` for the commit to pin) and files such as `.github/dependabot.yml`. `requiredChecks` states the rule for the status checks of the two rulesets: those of `main` are a subset of those of `develop`, and `dependency-review` and `conventional` are not required on `main` (the promotion pull request is opened with `GITHUB_TOKEN`, see promote).
+Each profile also lists the caller workflows a repository should have (`callers/<module>.yml`, with `{{ref}}` for the commit to pin) and files such as `.github/dependabot.yml`. The repository has one long-lived branch, `main`: feature branches are short-lived, pull requests are squash-merged and history stays linear.
 
-Required status check names differ per repository, so the profile holds none. Pass them with `--develop-checks` and `--main-checks`; without them an existing ruleset keeps its checks and a new one is created without the rule.
+Required status check names differ per repository, so the profile holds none. Pass them with `--checks`; without it an existing ruleset keeps its checks and a new one is created without the rule. Every required check runs on pull requests into `main`, so pull-request-only checks such as `dependency-review` and `conventional` can be required too.
 
 ```sh
 # dry run (the default): prints each API call, writes nothing
 node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss
 # apply: writes a snapshot of the current settings first, then sends the calls in order
-node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss --develop-checks build,test --main-checks build --apply
+node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss --checks build,test --apply
 # restore a snapshot (a dry run unless --apply)
 node scripts/apply.mjs restore <snapshot file> --apply
 ```
@@ -68,6 +39,7 @@ node scripts/apply.mjs restore <snapshot file> --apply
 - Switching `allowed_actions` from `all` to `selected` stops every action and reusable workflow that is not on the list: the dry run prints a warning, read it before `--apply`.
 - Calls go out in order: repository, Actions, rulesets, then the security features. A failed call stops the run; `--keep-going` sends the rest anyway and exits 1 (use it when one optional feature, such as code scanning on a repository with an advanced setup, is not available).
 - A snapshot (mode 0600) holds the settings as read before the first call (folder `repo-baseline/snapshots` in `$XDG_STATE_HOME`, by default the `.local/state` folder of the home directory, or `--snapshot-dir`) and, written after the calls, the ids of the rulesets the run created. Restore sets everything back to the snapshot and deletes those rulesets by id; it names the repository it writes to first, and refuses a file that is not a snapshot of this script. A restore only changes values: a snapshot from someone else can weaken settings of any repository you administer, so use your own.
+- A ruleset the profile does not name is left as it is. A repository that still has a ruleset for `develop` gets it deleted by hand (Settings, Rules, Rulesets) after its content is on `main`; the script never deletes one, except in a restore, for the rulesets the same run created.
 - A part GitHub does not return (a plan without rulesets, missing rights) is named and left alone.
 - Restore does not remove allowlist patterns that were added while `allowed_actions` was `all`, and a code scanning default setup change is asynchronous on GitHub's side (a second run right after can answer 409).
 - Not covered: organization settings, branch protection rules (rulesets only), secrets, the code scanning language list (default setup picks it).
@@ -78,16 +50,14 @@ Tests: `node --test scripts/test/*.test.mjs` (a fake GitHub in memory, no networ
 
 ## CI conventions
 
-Rules every repository follows, learned from auditing the OpenReloading repositories and BenchKeeper (13 minutes of Feeder tests and about 22 minutes of Ballistics CI ran twice on every merge to `develop`; two lint workflows never ran at all). `templates/ci/` holds copy-in files; they are standalone workflows, not reusable ones, so a repository needs no allowlist entry for them.
+Rules every repository follows, learned from auditing the OpenReloading repositories and BenchKeeper (13 minutes of Feeder tests and about 22 minutes of Ballistics CI ran twice on every merge; two lint workflows never ran at all). `templates/ci/` holds copy-in files; they are standalone workflows, not reusable ones, so a repository needs no allowlist entry for them.
 
 | Rule | Why |
 |---|---|
 | Every workflow starts with `permissions: {}`; each job grants what it needs (`contents: read` at least). | A default read grant at the top applies to every job added later. |
 | Every job has `timeout-minutes`, about three times its median run time, at least 5. | The default is 360 minutes; a hung test would hold the runner for six hours. |
-| `concurrency` on CI and pr-title workflows: `group: ${{ github.workflow }}-${{ github.head_ref \|\| github.ref }}`, `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`. | New pushes cancel superseded pull request runs, and a run on `develop` or a deploy is never cancelled. |
-| CI runs on `push` to `develop` and on `pull_request`, not on `push` to `main`. | `main` only receives merge commits of `develop`: their tree was checked on the pull request and on the push to `develop`. A workflow that deploys or releases from `main` keeps its own `push: main`. |
-| Every job of a CI workflow skips the promote pull request: `if: ${{ !(github.event_name == 'pull_request' && github.head_ref == 'develop' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository) }}`. | Pushing to `develop` updates the open promote pull request, which starts a second run of every check on the same commit. A skipped job counts as passing for a required check, so the condition names base and head repository: `github.head_ref != 'develop'` alone would let a fork's branch called `develop` skip every check. A `pull_request: branches:` filter is not an alternative: release-please pull requests target `main` and need their checks. Jobs that run only on pull requests add `github.event_name == 'pull_request' &&` in front. pr-title has no push run, so it needs no skip. |
-| Required checks on `main` are a subset of those on `develop`, and only checks that also run on the push to `develop`. | The promote pull request is opened with `GITHUB_TOKEN`, so its own `pull_request` runs wait for approval; its required checks are satisfied by the push run on the same commit. Pull-request-only checks (`dependency-review`, `conventional`) are never required on `main`. |
+| `concurrency` on CI and pr-title workflows: `group: ${{ github.workflow }}-${{ github.head_ref \|\| github.ref }}`, `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`. | New pushes cancel superseded pull request runs, and a run on `main` or a deploy is never cancelled. |
+| CI runs on `push` to `main` and on `pull_request`, with no `branches:` filter on `pull_request`. | The push run checks the squashed commit that landed on `main`. release-please pull requests target `main` and need their checks, so every pull request runs them. |
 | A required check keeps its name. To split a slow job into parallel jobs, add an aggregator job with the original name: `needs: [...]`, `if: ${{ always() }}`, failing unless every needed result is `success` (or `skipped` where the original job could be skipped). | A renamed check leaves open pull requests waiting forever for the old name, and adding a new required name blocks every open pull request until its first run. |
 | Third-party actions are pinned to a full commit SHA with the version in a comment, `persist-credentials: false` on checkout, untrusted values passed through `env:` and never interpolated into `run:`. | The `oss` settings profile requires SHA pinning; actionlint and zizmor (the `workflows` job in the CI skeleton) check the rest. |
 | Tool versions that Dependabot cannot see (an image in a `run:` line, a pinned CLI version) sit in one `env:` block at the top of the workflow with a comment. | They are updated by hand, so a reader must find them in one place. |
@@ -99,14 +69,14 @@ Files in `templates/ci/`:
 
 | File | Use |
 |---|---|
-| `ci.yml` | CI skeleton with the `workflows` job (actionlint and zizmor) and `dependency-review`; add the repository's own jobs, each with the same `if`, `timeout-minutes` and `permissions`. |
-| `pr-title.yml` | Conventional Commits check of the pull request title for repositories that squash-merge feature pull requests into `develop` (require `conventional` on `develop` only). |
+| `ci.yml` | CI skeleton with the `workflows` job (actionlint and zizmor) and `dependency-review`; add the repository's own jobs, each with `timeout-minutes` and `permissions`. |
+| `pr-title.yml` | Conventional Commits check of the pull request title for repositories that squash-merge pull requests into `main` (require `conventional` on `main`). |
 | `scorecard.yml` | OpenSSF Scorecard weekly. Replace the repository name in its `if`. |
 | `dependabot.yml` | Ecosystem entries to keep or delete. |
 
 The `workflows` job and `dependency-review` job are identical in every repository, which is why they are templates; a reusable workflow would need an allowlist entry in every repository for no gain.
 
-Settings that matter for CI and are not files: SHA pinning required and the Actions allowlist (below), fork pull request approval for all external contributors, `can_approve_pull_request_reviews` on (the promote workflow cannot open its pull request without it), no bypass actors beyond pull requests. For a repository owned by an organization the Actions allowlist is an organization setting: a repository-level `PUT` answers 409 and the `settings` script's allowlist call fails for it, so add patterns on the organization (`PUT /orgs/<org>/actions/permissions/selected-actions`), which then applies to all its repositories. Narrow patterns to the actions actually used (`docker/build-push-action@*`, not `docker/*@*`).
+Settings that matter for CI and are not files: SHA pinning required and the Actions allowlist (below), fork pull request approval for all external contributors, `can_approve_pull_request_reviews` on (a workflow that opens pull requests with `GITHUB_TOKEN` cannot without it; unverified for release-please), no bypass actors beyond pull requests. For a repository owned by an organization the Actions allowlist is an organization setting: a repository-level `PUT` answers 409 and the `settings` script's allowlist call fails for it, so add patterns on the organization (`PUT /orgs/<org>/actions/permissions/selected-actions`), which then applies to all its repositories. Narrow patterns to the actions actually used (`docker/build-push-action@*`, not `docker/*@*`).
 
 ## Adopting the code quality modules
 
@@ -222,7 +192,7 @@ Owner steps, once per GitHub account and once per repository (nothing here can b
 2. Per repository: import it as a project, then turn Automatic Analysis off under Administration, Analysis Method. CI analysis and Automatic Analysis cannot run on one project ([docs](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/automatic-analysis)).
 3. Per repository: add the token as the Actions secret `SONAR_TOKEN` ([docs](https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/ci-based-analysis/github-actions-for-sonarcloud)), and as a Dependabot secret too, since Dependabot pull requests do not get Actions secrets ([docs](https://docs.github.com/en/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions)).
 4. Allow the actions the workflow uses on the Actions allowlist: `ESchuderer/repo-baseline/.github/workflows/sonar.yml@*` and `SonarSource/sonarqube-scan-action@*` (for a repository owned by an organization, on the organization: see CI conventions). Without the entry the run ends in `startup_failure`, which is how the lint workflows of Feeder and AutoLever never ran before they became standalone.
-5. After the first scan, require the check on `develop`. Pick its exact name in the status check list of the ruleset: Sonar's documentation names it `SonarQube Code Analysis` while community reports name it `SonarCloud Code Analysis` (unverified which one a project shows). Do not require it on `main`: promotion pull requests are not scanned.
+5. After the first scan, require the check on `main`. Pick its exact name in the status check list of the ruleset: Sonar's documentation names it `SonarQube Code Analysis` while community reports name it `SonarCloud Code Analysis` (unverified which one a project shows).
 
 Then copy `templates/sonar/sonar-project.properties` to the repository root and fill in the organization and project key (`sonar.test.inclusions` only filters files inside `sonar.tests`, which is why the template sets both to `.` and excludes the test globs from the main code: [analysis scope](https://docs.sonarsource.com/sonarqube-server/10.7/project-administration/analysis-scope), a SonarQube Server page, as the SonarQube Cloud documentation has no page of its own for it), and add `.github/workflows/sonar.yml`:
 
@@ -230,9 +200,9 @@ Then copy `templates/sonar/sonar-project.properties` to the repository root and 
 name: Sonar
 on:
   pull_request:
-    branches: [develop]
+    branches: [main]
   push:
-    branches: [develop]
+    branches: [main]
 permissions: {}
 jobs:
   sonar:
@@ -243,7 +213,7 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 ```
 
-The job scans only pushes to `branch` and pull requests into it, whatever the caller triggers on. Inputs: `branch` (`develop`), `project-base-dir` (`.`), `coverage-artifact` (empty). To import coverage, put this job into the repository's test workflow with `needs: <test job>`, upload the report (`coverage/lcov.info` or `coverage.xml`) as an artifact there, and pass its name as `coverage-artifact`. The default Sonar way gate requires 80% coverage and at most 3% duplication on new code ([docs](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-gates/introduction-to-quality-gates)); unverified: whether it fails when no coverage report exists, so import coverage before requiring the check.
+The job scans only pushes to `branch` and pull requests into it, whatever the caller triggers on. Inputs: `branch` (`main`), `project-base-dir` (`.`), `coverage-artifact` (empty). To import coverage, put this job into the repository's test workflow with `needs: <test job>`, upload the report (`coverage/lcov.info` or `coverage.xml`) as an artifact there, and pass its name as `coverage-artifact`. The default Sonar way gate requires 80% coverage and at most 3% duplication on new code ([docs](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-gates/introduction-to-quality-gates)); unverified: whether it fails when no coverage report exists, so import coverage before requiring the check.
 
 Limits:
 

@@ -2,7 +2,7 @@ name: Scorecard
 
 # OpenSSF Scorecard; with publish_results the workflow may hold no top-level env, defaults or write permissions
 # (https://github.com/ossf/scorecard-action#workflow-restrictions). The weekly run and a branch protection change are
-# enough: a run per push to develop adds nothing. Replace the repository name in the `if`.
+# enough: a run per push to main adds nothing. Replace the repository name in the `if`.
 on:
   branch_protection_rule:
   schedule:

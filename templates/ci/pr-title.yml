@@ -1,9 +1,7 @@
 name: PR title
 
-# Feature pull requests into develop are squash-merged with their title as the commit message: the title follows
-# Conventional Commits. The back-merge of main into develop is a merge commit, and its pull request title is checked
-# too: name it `chore: back-merge main into develop`. Keep the check named `conventional` and require it on develop only
-# (a pull request check cannot be required on main, see README, CI conventions).
+# Pull requests into main are squash-merged with their title as the commit message: the title follows Conventional
+# Commits. Keep the check named `conventional` and require it on main.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
