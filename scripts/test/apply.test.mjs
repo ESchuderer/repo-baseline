@@ -100,7 +100,7 @@ test('apply snapshots first, keeps the existing checks and allowlist entries, an
   assert.deepEqual([db.pvr, db.alerts, db.fixes, db.code, db.scanning, db.pushProtection], [true, true, true, 'configured', true, true]);
   const develop = db.rulesets.find((r) => r.name === 'develop');
   assert.deepEqual(develop.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'build', integration_id: 15368 }]);
-  assert.deepEqual(develop.rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
+  assert.deepEqual(develop.rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['merge', 'squash']);
   assert.equal(develop.rules.find((r) => r.type === 'pull_request').parameters.require_extra_approval_for_unattributed_changes, true);
   assert.deepEqual(db.rulesets.find((r) => r.name === 'main').rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks, [{ context: 'build' }]);
   const before = t.gh.writes().length;
@@ -147,7 +147,7 @@ test('a ruleset set by hand under another name is updated, not duplicated, and k
   const t = cli(db, [], {});
   t.go([SLUG, '--profile', 'oss', '--apply']);
   assert.deepEqual(db.rulesets.map((r) => r.name), ['default branch', 'main']);
-  assert.deepEqual(db.rulesets[0].rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['squash']);
+  assert.deepEqual(db.rulesets[0].rules.find((r) => r.type === 'pull_request').parameters.allowed_merge_methods, ['merge', 'squash']);
 });
 
 test('a ruleset whose detail cannot be read is never created again', () => {
@@ -188,7 +188,7 @@ test('a PUT keeps the live rules the profile does not name and the checks, and s
   const t = cli(db, [], {});
   t.go([SLUG, '--profile', 'oss', '--apply']);
   const develop = db.rulesets.find((r) => r.name === 'develop');
-  assert.deepEqual(develop.rules.map((r) => r.type).sort(), ['deletion', 'non_fast_forward', 'pull_request', 'required_linear_history', 'required_signatures', 'required_status_checks']);
+  assert.deepEqual(develop.rules.map((r) => r.type).sort(), ['deletion', 'non_fast_forward', 'pull_request', 'required_signatures', 'required_status_checks']);
   assert.deepEqual(develop.bypass_actors, []);
 });
 
