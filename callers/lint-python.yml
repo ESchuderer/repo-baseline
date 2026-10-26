@@ -2,7 +2,7 @@ name: Lint Python
 on:
   pull_request:
   push:
-    branches: [develop]
+    branches: [main]
 permissions: {}
 jobs:
   lint-python:
@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: '3.13'
       # ruff and basedpyright come from the hash-locked requirements-dev.txt (README, lint-python)
-      - run: pip install --only-binary :all: --require-hashes -r requirements-dev.txt
+      - run: 'pip install --only-binary :all: --require-hashes -r requirements-dev.txt'
       # basedpyright resolves imports from the project's own dependencies: replace with the project's install
       - run: pip install -r requirements.txt
       - run: ruff check .
