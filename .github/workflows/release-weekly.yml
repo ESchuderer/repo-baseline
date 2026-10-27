@@ -1,0 +1,70 @@
+name: Release weekly
+
+# Reusable: merges the open release-please pull request, so a release goes out every Monday without anyone clicking.
+# The caller (callers/release-weekly.yml) holds the schedule and `workflow_dispatch`, which releases on any other day.
+# The pull request is merged with auto-merge: it waits for the required checks (and the merge queue, where the
+# repository has one). A pull request with the label `hold` is left alone, and no open release pull request is not an
+# error: the job ends.
+# The release workflow runs after the merge. The App token's merge starts it by push; with GITHUB_TOKEN no workflow
+# starts, so the job dispatches `release-workflow` itself (a repeat run finds nothing to release).
+on:
+  workflow_call:
+    inputs:
+      app-client-id:
+        type: string
+        default: ''
+        description: Client id of the release GitHub App; empty falls back to GITHUB_TOKEN.
+      release-workflow:
+        type: string
+        default: release.yml
+    secrets:
+      app-private-key:
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: release-weekly
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+    steps:
+      - id: app-token
+        if: ${{ inputs.app-client-id != '' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ inputs.app-client-id }}
+          private-key: ${{ secrets.app-private-key }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-actions: write
+      - name: Merge the release pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
+        run: |
+          set -eu
+          pr=$(gh pr list --repo "$REPO" --state open --label 'autorelease: pending' --json number,labels \
+            --jq '[.[] | select(all(.labels[]; .name != "hold"))][0].number // empty')
+          if [ -z "$pr" ]; then echo "No release pull request to merge."; exit 0; fi
+          echo "Release pull request #$pr"
+          gh pr merge "$pr" --repo "$REPO" --squash --auto
+          state=OPEN
+          for _ in $(seq 1 110); do
+            state=$(gh pr view "$pr" --repo "$REPO" --json state --jq .state)
+            [ "$state" = OPEN ] || break
+            sleep 60
+          done
+          if [ "$state" != MERGED ]; then
+            echo "::error::Release pull request #$pr is $state; auto-merge stays on and merges it once its checks pass."
+            exit 1
+          fi
+          gh workflow run "$RELEASE_WORKFLOW" --repo "$REPO" --ref main

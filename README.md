@@ -11,7 +11,7 @@ Shared GitHub setup for ESchuderer's and OpenReloading's repositories: reusable 
 | lint-python | `callers/lint-python.yml`, `templates/lint-python/` | Configuration for Python repositories: ruff (bugbear, simplify, complexity and size limits, pathlib, pylint subset) and basedpyright with a baseline file, installed from the repository's dev dependencies. No reusable workflow. |
 | sonar | `.github/workflows/sonar.yml`, `templates/sonar/` | One SonarQube Cloud scan of `main` and of pull requests into it. |
 | settings | `profiles/`, `callers/`, `scripts/` | Desired GitHub settings per profile (rulesets, merge methods, Actions allowlist, security features) and a script that applies them with a dry run, a snapshot and a restore. |
-| release | `templates/release/`, `templates/pages/`, README section Release and Pages | Copy-in workflows for a repository on one `main` branch: release-please with a release pull request the owner merges, and one Pages workflow for the latest release at the root and `main` at `/next/`. |
+| release | `.github/workflows/release-weekly.yml`, `callers/release-weekly.yml`, `templates/release/`, `templates/pages/`, README section Release and Pages | A repository on one `main` branch: release-please keeps a release pull request open, a weekly workflow merges it every Monday (or when started by hand), and one Pages workflow serves the latest release at the root and `main` at `/next/`. |
 
 ## settings
 
@@ -31,6 +31,8 @@ Required status check names differ per repository, so the profile holds none. Pa
 node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss
 # apply: writes a snapshot of the current settings first, then sends the calls in order
 node scripts/apply.mjs ESchuderer/BenchKeeper --profile oss --checks build,test --apply
+# organization repository: add the merge queue; personal repository: require up-to-date branches instead
+node scripts/apply.mjs OpenReloading/Feeder --profile oss --checks build,test --merge-queue --apply
 # restore a snapshot (a dry run unless --apply)
 node scripts/apply.mjs restore <snapshot file> --apply
 ```
@@ -51,11 +53,14 @@ Tests: `node --test scripts/test/*.test.mjs` (a fake GitHub in memory, no networ
 
 ## Release and Pages
 
-Nothing releases automatically. A release happens when the owner merges the release pull request or starts a manual workflow; no workflow enables auto-merge on the release pull request or merges it.
+Every `main` merge is releasable and deploys the `next` edition. A release is one pull request: release-please keeps it open from the Conventional Commits, and every Monday 05:00 UTC the weekly workflow merges it once its checks pass. The owner can merge it earlier, run the weekly workflow by hand (Actions, Run workflow) for any other day, or put the label `hold` on the pull request to skip a week. Without a releasable commit (`feat`, `fix`, `perf`, or a breaking change) there is no pull request and nothing is released.
 
 | Rule | How |
 |---|---|
-| Release pull request | `templates/release/release-please.yml` runs release-please on every push to `main` and keeps one release pull request open from the Conventional Commits. Merging it tags the version and creates the GitHub Release. Publishing steps (packages, images) run from `release: published`, never from a push to `main`. |
+| Release pull request | `templates/release/release-please.yml` runs release-please on every push to `main` and keeps one release pull request open from the Conventional Commits. Merging it tags the version and creates the GitHub Release. Publishing steps (packages, images) run from `release: published` or from the release workflow after a release, never from a plain push to `main`. |
+| Weekly merge | `callers/release-weekly.yml` (schedule and `workflow_dispatch`) calls `.github/workflows/release-weekly.yml`: it turns on auto-merge (squash) for the release pull request, waits for the merge, and starts the release workflow so a merge made without the App token still releases (a repeat run finds nothing to do). A failed run mails the owner. GitHub disables scheduled workflows of a public repository after 60 days without repository activity ([docs](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/disabling-and-enabling-a-workflow)); a repository that stays quiet that long needs its schedule re-enabled by hand. |
+| Merge queue | Organization repositories: `--merge-queue` of the settings script adds a squash merge queue to the `main` ruleset, and every required check runs on `merge_group` (the CI templates do). A personal repository cannot have one (the API answers 422 for the rule, checked 2026-10-27; [docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)): `--up-to-date` requires up-to-date branches on the required checks instead. Apply either only after the workflows have `merge_group`, or the queue waits for checks that never report. |
+| Not in the baseline | No feature flags (a static app has the `next` edition as its staging channel; add flags when a hosted edition exists), no semantic-release (it releases on every merge and has no pull request to hold), no release branches (a fix goes to `main` and a patch release). |
 | Checks on the release pull request | A pull request opened with `GITHUB_TOKEN` starts no checks until someone approves the runs. The workflow opens it with the release GitHub App token (variable `RELEASE_APP_CLIENT_ID`, secret `RELEASE_APP_PRIVATE_KEY`) so required checks run at once. Without the App the job falls back to `GITHUB_TOKEN`: the owner approves the runs on the release pull request and, because a release created with `GITHUB_TOKEN` does not trigger `release: published`, starts the Pages workflow by hand after each release. |
 | Pages | One workflow builds both editions into one artifact, because a Pages deployment replaces the whole site: the root is the latest release, built from its tag, and `/next/` is `main`, rebuilt on every push to `main`. Triggers are `push` on `main`, `release: published` and `workflow_dispatch`. Until the first release exists the root redirects to `/next/`. |
 | Browser storage | Both editions share one origin. An app that keeps data in the browser (IndexedDB, localStorage, service worker cache) names it per edition: the workflow passes `EDITION` (`NEXT_PUBLIC_EDITION` for Next.js), `stable` or `next`, at build time, and the service worker of `next` has scope `/next/`. |
@@ -66,6 +71,7 @@ Templates:
 | File | Use |
 |---|---|
 | `templates/release/release-please.yml` | Release pull request with the App token. `release-type` defaults to `simple`; change it for the language of the repository. |
+| `callers/release-weekly.yml` | The Monday schedule and the manual trigger; pin `{{ref}}` to a commit of this repository and allow `ESchuderer/repo-baseline/.github/workflows/release-weekly.yml@*` on the Actions allowlist. |
 | `templates/pages/pages.yml` | Pages for a site built with `npm run build` into `dist/`. |
 | `templates/pages/pages-mkdocs.yml` | Pages for mkdocs: hash-locked `requirements-docs.txt`, `site_url: !ENV SITE_URL`. |
 | `templates/pages/pages-nextjs.yml` | Pages for a Next.js static export (`output: 'export'`, `basePath` from `BASE_PATH`, written to `out/`). |
@@ -76,7 +82,7 @@ The root edition is built with the build script of the release tag. A release ma
 
 1. Copy the CI skeleton (`templates/ci/`, see CI conventions) and the release template; add `googleapis/release-please-action@*` to the Actions allowlist (`actions/*` is covered by `github_owned_allowed`).
 2. Copy the Pages template that fits the build and make the build read `EDITION` and `BASE_PATH`.
-3. Create the release GitHub App (contents, pull requests and issues write; install it on the repository only), then set the repository variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`.
+3. Create the release GitHub App (contents, pull requests, issues and actions write; install it on the repository only), then set the repository variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`. The weekly merge needs it: without the App the release pull request gets no checks.
 4. Apply the settings profile (`settings` above) and require the CI checks on `main`.
 
 ### Settings the owner changes

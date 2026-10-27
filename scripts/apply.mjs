@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Applies a settings profile (profiles/<name>.json) to one repository, or restores a snapshot of it.
-//   node scripts/apply.mjs <owner/repo> --profile <name> [--checks a,b] [--apply] [--keep-going] [--snapshot-dir dir]
+//   node scripts/apply.mjs <owner/repo> --profile <name> [--checks a,b] [--merge-queue | --up-to-date] [--apply] [--keep-going] [--snapshot-dir dir]
 //   node scripts/apply.mjs restore <snapshot.json> [--apply]
 // Without --apply it only prints each API call. With it, the current settings are written to a snapshot file first.
 // Calls go through the gh CLI, so the token needs admin rights on the repository.
@@ -9,10 +9,10 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { SLUG, execute, ghRun, plan, readLive } from './settings.mjs';
+import { MERGE_QUEUE, SLUG, execute, ghRun, plan, readLive } from './settings.mjs';
 
 const root = join(fileURLToPath(import.meta.url), '../..');
-const OPTIONS = { profile: { type: 'string' }, apply: { type: 'boolean' }, checks: { type: 'string' }, 'snapshot-dir': { type: 'string' }, 'keep-going': { type: 'boolean' } };
+const OPTIONS = { profile: { type: 'string' }, apply: { type: 'boolean' }, checks: { type: 'string' }, 'snapshot-dir': { type: 'string' }, 'keep-going': { type: 'boolean' }, 'merge-queue': { type: 'boolean' }, 'up-to-date': { type: 'boolean' } };
 const list = (s) => { const l = (s ?? '').split(',').map((x) => x.trim()).filter(Boolean); return l.length ? l : undefined; };
 
 export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'repo-baseline/snapshots') } = {}) {
@@ -36,7 +36,10 @@ export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = j
     if (!slug || !SLUG.test(slug) || !/^[\w-]+$/.test(o.profile ?? '')) { say('usage: apply.mjs <owner/repo> --profile <name> [--apply]   |   apply.mjs restore <snapshot.json> [--apply]'); return 2; }
     desired = JSON.parse(readFileSync(join(root, 'profiles', `${o.profile}.json`), 'utf8'));
     // The ruleset of the profile is named main; its status checks come from --checks.
-    opts = { checks: list(o.checks) ? { main: list(o.checks) } : {} };
+    opts = { checks: list(o.checks) ? { main: list(o.checks) } : {}, strict: o['up-to-date'] ? true : undefined };
+    // --merge-queue: organization repositories; --up-to-date: the same safety for a personal repository, which has no queue.
+    if (o['merge-queue'] && o['up-to-date']) { say('--merge-queue and --up-to-date exclude each other'); return 2; }
+    if (o['merge-queue']) for (const rs of desired.rulesets ?? []) rs.rules.push(MERGE_QUEUE);
   }
   const live = readLive(run, slug);
   if (!live.state.repo) { say(`cannot read ${slug}: ${live.unreadable.repo?.message ?? 'no access'}`); return 1; }
