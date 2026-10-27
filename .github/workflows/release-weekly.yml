@@ -5,15 +5,16 @@ name: Release weekly
 # The pull request is merged with auto-merge: it waits for the required checks (and the merge queue, where the
 # repository has one). A pull request with the label `hold` is left alone, and no open release pull request is not an
 # error: the job ends.
-# The release workflow runs after the merge. The App token's merge starts it by push; with GITHUB_TOKEN no workflow
-# starts, so the job dispatches `release-workflow` itself (a repeat run finds nothing to release).
+# The merge needs the release GitHub App: the job token has no contents write, and a pull request merged with
+# GITHUB_TOKEN starts no workflow. The App token's merge starts the release workflow by push; the job also dispatches
+# `release-workflow` itself in case that push run was missed (a repeat run finds nothing to release).
 on:
   workflow_call:
     inputs:
       app-client-id:
         type: string
         default: ''
-        description: Client id of the release GitHub App; empty falls back to GITHUB_TOKEN.
+        description: Client id of the release GitHub App; required (an empty value fails the job).
       release-workflow:
         type: string
         default: release.yml
@@ -36,8 +37,12 @@ jobs:
       pull-requests: write
       actions: write
     steps:
+      - name: Require the release App
+        env:
+          CLIENT_ID: ${{ inputs.app-client-id }}
+        run: |
+          [ -n "$CLIENT_ID" ] || { echo "::error::Set the variable RELEASE_APP_CLIENT_ID and the secret RELEASE_APP_PRIVATE_KEY (release GitHub App)."; exit 1; }
       - id: app-token
-        if: ${{ inputs.app-client-id != '' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ inputs.app-client-id }}
@@ -46,7 +51,7 @@ jobs:
           permission-pull-requests: write
       - name: Merge the release pull request
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           DISPATCH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
