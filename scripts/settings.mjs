@@ -77,7 +77,7 @@ export const checkContexts = (rs) => rs?.rules.find((r) => r.type === 'required_
 // The ruleset to send: the wanted rules over the live ones. A live rule keeps the parameters the profile does not name,
 // live rules of other types stay (a PUT replaces the whole list), and so do the live status checks unless contexts are
 // given. Conditions and bypass actors are the profile's. exact (restore) sends the wanted ruleset as it is.
-function target(want, have, contexts, exact, strict) {
+function target(want, have, contexts, exact) {
   if (exact) return strip(want);
   const liveChecks = have?.rules.find((r) => r.type === 'required_status_checks');
   const named = new Set(want.rules.map((r) => r.type));
@@ -88,15 +88,15 @@ function target(want, have, contexts, exact, strict) {
   for (const r of have?.rules ?? []) if (!named.has(r.type) && r.type !== 'required_status_checks') rules.push(r);
   if (contexts?.length) {
     const old = new Map((liveChecks?.parameters.required_status_checks ?? []).map((c) => [c.context, c]));
-    rules.push({ type: 'required_status_checks', parameters: { strict_required_status_checks_policy: false, ...liveChecks?.parameters, ...(strict === undefined ? {} : { strict_required_status_checks_policy: strict }), required_status_checks: contexts.map((c) => old.get(c) ?? { context: c }) } });
-  } else if (liveChecks) rules.push(strict === undefined ? liveChecks : { ...liveChecks, parameters: { ...liveChecks.parameters, strict_required_status_checks_policy: strict } });
+    rules.push({ type: 'required_status_checks', parameters: { strict_required_status_checks_policy: false, ...liveChecks?.parameters, required_status_checks: contexts.map((c) => old.get(c) ?? { context: c }) } });
+  } else if (liveChecks) rules.push(liveChecks);
   return strip({ ...want, name: have?.name ?? want.name, rules });
 }
 
 // Ordered API calls { label, method, path, body } that change live into desired. Only keys the desired state names
 // are touched. exact (restore): lists are replaced, not extended, and the rulesets with an id in remove are deleted.
-// checks: { <ruleset name>: [contexts] } sets the required status checks; strict sets "branch must be up to date" on them.
-export function plan(slug, desired, live, { exact = false, checks = {}, remove = [], strict } = {}) {
+// checks: { <ruleset name>: [contexts] } sets the required status checks.
+export function plan(slug, desired, live, { exact = false, checks = {}, remove = [] } = {}) {
   const ops = [];
   const base = `repos/${slug}`;
   const add = (label, method, path, body) => ops.push({ label, method, path: `${base}${path}`, body });
@@ -125,7 +125,7 @@ export function plan(slug, desired, live, { exact = false, checks = {}, remove =
   if (desired.rulesets && rulesets) {
     for (const want of desired.rulesets) {
       const have = findRuleset(rulesets, want);
-      const body = target(want, have, checks[want.name], exact, strict);
+      const body = target(want, have, checks[want.name], exact);
       if (!have) add(`create ruleset ${want.name}`, 'POST', '/rulesets', body);
       else if (!same(body, strip(have))) add(`update ruleset ${want.name}`, 'PUT', `/rulesets/${have.id}`, body);
     }

@@ -44,10 +44,10 @@ jobs:
           private-key: ${{ secrets.app-private-key }}
           permission-contents: write
           permission-pull-requests: write
-          permission-actions: write
       - name: Merge the release pull request
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          DISPATCH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
         run: |
@@ -67,4 +67,5 @@ jobs:
             echo "::error::Release pull request #$pr is $state; auto-merge stays on and merges it once its checks pass."
             exit 1
           fi
-          gh workflow run "$RELEASE_WORKFLOW" --repo "$REPO" --ref main
+          # GITHUB_TOKEN may dispatch a workflow; the App needs no Actions permission for it.
+          GH_TOKEN="$DISPATCH_TOKEN" gh workflow run "$RELEASE_WORKFLOW" --repo "$REPO" --ref main

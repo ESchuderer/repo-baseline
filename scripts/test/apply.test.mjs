@@ -274,12 +274,3 @@ test('--merge-queue adds the queue rule to the main ruleset, a second run change
   assert.equal(again.go([SLUG, '--profile', 'oss', '--checks', 'build', '--merge-queue', '--apply']), 0);
   assert.equal(again.gh.writes().filter((w) => /rulesets/.test(w.path)).length, 0);
 });
-
-test('--up-to-date requires up-to-date branches on the required checks and excludes --merge-queue', () => {
-  const db = drifted();
-  const t = cli(db, [], {});
-  assert.equal(t.go([SLUG, '--profile', 'oss', '--checks', 'build', '--up-to-date', '--apply']), 0);
-  const main = db.rulesets.find((r) => r.conditions.ref_name.include.includes('refs/heads/main'));
-  assert.equal(main.rules.find((r) => r.type === 'required_status_checks').parameters.strict_required_status_checks_policy, true);
-  assert.equal(cli(drifted(), [], {}).go([SLUG, '--profile', 'oss', '--merge-queue', '--up-to-date']), 2);
-});
