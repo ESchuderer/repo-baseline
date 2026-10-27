@@ -2,9 +2,11 @@ name: PR title
 
 # Pull requests into main are squash-merged with their title as the commit message: the title follows Conventional
 # Commits. Keep the check named `conventional` and require it on main.
+# The merge queue needs the required check on `merge_group` too; the title was checked on the pull request.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
 
 permissions: {}
 
@@ -19,7 +21,8 @@ jobs:
     permissions:
       pull-requests: read
     steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+      - if: ${{ github.event_name == 'pull_request' }}
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

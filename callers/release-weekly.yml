@@ -1,0 +1,17 @@
+name: Release weekly
+on:
+  schedule:
+    - cron: '0 5 * * 1' # Monday 05:00 UTC
+  workflow_dispatch:
+permissions: {}
+jobs:
+  weekly:
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+    uses: ESchuderer/repo-baseline/.github/workflows/release-weekly.yml@{{ref}}
+    with:
+      app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

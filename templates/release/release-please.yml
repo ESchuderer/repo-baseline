@@ -1,8 +1,8 @@
 name: Release
 
 # Copy to .github/workflows/release.yml (README, Release and Pages). release-please keeps one release pull request open
-# from the Conventional Commits on main. Nothing here merges it or enables auto-merge: a release happens when the owner
-# merges that pull request, which tags the version and creates the GitHub Release.
+# from the Conventional Commits on main. Merging it tags the version and creates the GitHub Release. The weekly
+# workflow (callers/release-weekly.yml) merges it every Monday; the owner can merge it earlier or run that workflow by hand.
 #
 # The pull request opens with the release GitHub App token so that its required checks run without approval (a pull
 # request opened with GITHUB_TOKEN starts no runs until someone approves them). Set the variable RELEASE_APP_CLIENT_ID
