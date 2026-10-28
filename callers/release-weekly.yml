@@ -1,7 +1,8 @@
 name: Release weekly
 on:
   schedule:
-    - cron: '0 5 * * 1' # Monday 05:00 UTC
+    - cron: '0 14 * * 1' # Monday 14:00
+      timezone: Europe/Berlin
   workflow_dispatch:
 permissions: {}
 jobs:
