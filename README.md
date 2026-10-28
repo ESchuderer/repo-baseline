@@ -53,7 +53,7 @@ Tests: `node --test scripts/test/*.test.mjs` (a fake GitHub in memory, no networ
 
 ## Release and Pages
 
-Every `main` merge is releasable and deploys the `next` edition. A release is one pull request: release-please keeps it open from the Conventional Commits, and every Monday 05:00 UTC the weekly workflow merges it once its checks pass. The owner can merge it earlier, run the weekly workflow by hand (Actions, Run workflow) for any other day, or put the label `hold` on the pull request to skip a week. Without a releasable commit (`feat`, `fix`, `perf`, or a breaking change) there is no pull request and nothing is released.
+Every `main` merge is releasable and deploys the `next` edition. A release is one pull request: release-please keeps it open from the Conventional Commits, and every Monday 14:00 Europe/Berlin the weekly workflow merges it once its checks pass. The owner can merge it earlier, run the weekly workflow by hand (Actions, Run workflow) for any other day, or put the label `hold` on the pull request to skip a week. Without a releasable commit (`feat`, `fix`, `perf`, or a breaking change) there is no pull request and nothing is released.
 
 | Rule | How |
 |---|---|
