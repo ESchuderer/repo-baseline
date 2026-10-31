@@ -15,7 +15,7 @@ const root = join(fileURLToPath(import.meta.url), '../..');
 const OPTIONS = { profile: { type: 'string' }, apply: { type: 'boolean' }, checks: { type: 'string' }, 'snapshot-dir': { type: 'string' }, 'keep-going': { type: 'boolean' }, 'merge-queue': { type: 'boolean' } };
 const list = (s) => { const l = (s ?? '').split(',').map((x) => x.trim()).filter(Boolean); return l.length ? l : undefined; };
 
-export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'repo-baseline/snapshots') } = {}) {
+export function main(argv, { out = process.stdout, run = ghRun, snapshotRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'repo-standards/snapshots') } = {}) {
   const say = (s) => out.write(`${s}\n`);
   let parsed;
   try { parsed = parseArgs({ args: argv, options: OPTIONS, allowPositionals: true }); } catch (e) { say(e.message); return 2; }

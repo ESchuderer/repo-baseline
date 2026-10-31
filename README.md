@@ -1,4 +1,4 @@
-# repo-baseline
+# repo-standards
 
 Shared GitHub setup for ESchuderer's and OpenReloading's repositories: reusable workflows a repository calls with a few lines, pinned to a commit. Each module is optional.
 
@@ -41,7 +41,7 @@ node scripts/apply.mjs restore <snapshot file> --apply
 - Only settings the profile names are touched. Allowlist patterns are added to the existing ones, never removed. A ruleset is found by its branches (a hand-made one under another name is updated, not duplicated) and keeps its name, the pull request parameters the profile does not name, its other rules (a `PUT` replaces the whole rule list, so the script sends them back) and its status checks; its branches and bypass actors become the profile's. A second run reports nothing to change.
 - Switching `allowed_actions` from `all` to `selected` stops every action and reusable workflow that is not on the list: the dry run prints a warning, read it before `--apply`.
 - Calls go out in order: repository, Actions, rulesets, then the security features. A failed call stops the run; `--keep-going` sends the rest anyway and exits 1 (use it when one optional feature, such as code scanning on a repository with an advanced setup, is not available).
-- A snapshot (mode 0600) holds the settings as read before the first call (folder `repo-baseline/snapshots` in `$XDG_STATE_HOME`, by default the `.local/state` folder of the home directory, or `--snapshot-dir`) and, written after the calls, the ids of the rulesets the run created. Restore sets everything back to the snapshot and deletes those rulesets by id; it names the repository it writes to first, and refuses a file that is not a snapshot of this script. A restore only changes values: a snapshot from someone else can weaken settings of any repository you administer, so use your own.
+- A snapshot (mode 0600) holds the settings as read before the first call (folder `repo-standards/snapshots` in `$XDG_STATE_HOME`, by default the `.local/state` folder of the home directory, or `--snapshot-dir`) and, written after the calls, the ids of the rulesets the run created. Restore sets everything back to the snapshot and deletes those rulesets by id; it names the repository it writes to first, and refuses a file that is not a snapshot of this script. A restore only changes values: a snapshot from someone else can weaken settings of any repository you administer, so use your own.
 - A ruleset the profile does not name is left as it is. A repository that still has a ruleset for `develop` gets it deleted by hand (Settings, Rules, Rulesets) after its content is on `main`; the script never deletes one, except in a restore, for the rulesets the same run created.
 - A part GitHub does not return (a plan without rulesets, missing rights) is named and left alone.
 - Restore does not remove allowlist patterns that were added while `allowed_actions` was `all`, and a code scanning default setup change is asynchronous on GitHub's side (a second run right after can answer 409).
@@ -71,7 +71,7 @@ Templates:
 | File | Use |
 |---|---|
 | `templates/release/release-please.yml` | Release pull request with the App token. `release-type` defaults to `simple`; change it for the language of the repository. |
-| `callers/release-weekly.yml` | The Monday schedule and the manual trigger; pin `{{ref}}` to a commit of this repository and allow `ESchuderer/repo-baseline/.github/workflows/release-weekly.yml@*` on the Actions allowlist. |
+| `callers/release-weekly.yml` | The Monday schedule and the manual trigger; pin `{{ref}}` to a commit of this repository and allow `ESchuderer/repo-standards/.github/workflows/release-weekly.yml@*` on the Actions allowlist. |
 | `templates/pages/pages.yml` | Pages for a site built with `npm run build` into `dist/`. |
 | `templates/pages/pages-mkdocs.yml` | Pages for mkdocs: hash-locked `requirements-docs.txt`, `site_url: !ENV SITE_URL`. |
 | `templates/pages/pages-nextjs.yml` | Pages for a Next.js static export (`output: 'export'`, `basePath` from `BASE_PATH`, written to `out/`). |
@@ -237,7 +237,7 @@ Owner steps, once per GitHub account and once per repository (nothing here can b
 1. Import the GitHub account into SonarQube Cloud ([getting started](https://docs.sonarsource.com/sonarqube-cloud/getting-started/github), [import guide](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/creating-organization/importing-github-organization)) and choose the OSS plan: unlimited public repositories (no private projects), unlimited branch and pull request analysis, custom quality profiles and gates; its price is unverified; the Free plan analyzes only the main branch ([plans](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-subscription/subscription-plans)). Unverified: whether a personal account (not an organization) qualifies for the OSS plan.
 2. Per repository: import it as a project, then turn Automatic Analysis off under Administration, Analysis Method. CI analysis and Automatic Analysis cannot run on one project ([docs](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/automatic-analysis)).
 3. Per repository: add the token as the Actions secret `SONAR_TOKEN` ([docs](https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/ci-based-analysis/github-actions-for-sonarcloud)). Dependabot pull requests are not scanned: they get no Actions secret (they would need a copy in the Dependabot secrets, [docs](https://docs.github.com/en/code-security/dependabot/troubleshooting-dependabot/troubleshooting-dependabot-on-github-actions)) and a version bump has no code to analyze.
-4. Allow the actions the workflow uses on the Actions allowlist: `ESchuderer/repo-baseline/.github/workflows/sonar.yml@*` and `SonarSource/sonarqube-scan-action@*` (for a repository owned by an organization, on the organization: see CI conventions). Without the entry the run ends in `startup_failure`, which is how the lint workflows of Feeder and AutoLever never ran before they became standalone.
+4. Allow the actions the workflow uses on the Actions allowlist: `ESchuderer/repo-standards/.github/workflows/sonar.yml@*` and `SonarSource/sonarqube-scan-action@*` (for a repository owned by an organization, on the organization: see CI conventions). Without the entry the run ends in `startup_failure`, which is how the lint workflows of Feeder and AutoLever never ran before they became standalone.
 5. After the first scan, require the check on `main`. Pick its exact name in the status check list of the ruleset: Sonar's documentation names it `SonarQube Code Analysis` while community reports name it `SonarCloud Code Analysis` (unverified which one a project shows).
 
 Then copy `templates/sonar/sonar-project.properties` to the repository root and fill in the organization and project key (`sonar.test.inclusions` only filters files inside `sonar.tests`, which is why the template sets both to `.` and excludes the test globs from the main code: [analysis scope](https://docs.sonarsource.com/sonarqube-server/10.7/project-administration/analysis-scope), a SonarQube Server page, as the SonarQube Cloud documentation has no page of its own for it), and add `.github/workflows/sonar.yml`:
@@ -254,7 +254,7 @@ jobs:
   sonar:
     permissions:
       contents: read
-    uses: ESchuderer/repo-baseline/.github/workflows/sonar.yml@<commit sha>
+    uses: ESchuderer/repo-standards/.github/workflows/sonar.yml@<commit sha>
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 ```
